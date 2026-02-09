@@ -107,7 +107,7 @@ export const FormulaSection: React.FC<Props> = ({ result, battery }) => {
 
       <div className="px-6 md:px-8 pb-6 md:pb-8 space-y-4 border-t border-slate-100 pt-6">
         {/* Legend */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs text-slate-500 bg-slate-50 rounded-xl p-4 border border-slate-200">
+        <div className="grid grid-cols-2 gap-2 sm:gap-3 text-[10px] sm:text-xs text-slate-500 bg-slate-50 rounded-xl p-3 sm:p-4 border border-slate-200">
           <div><span className="font-mono font-semibold text-slate-700">C</span> — ємність ({battery.capacity} кВт·год)</div>
           <div><span className="font-mono font-semibold text-slate-700">SoC</span> — рівень заряду ({battery.currentCharge}%)</div>
           <div><span className="font-mono font-semibold text-slate-700">P</span> — споживання ({result.currentConsumption.toFixed(1)} кВт)</div>
@@ -123,12 +123,12 @@ export const FormulaSection: React.FC<Props> = ({ result, battery }) => {
             </div>
 
             {/* Generic formula */}
-            <div className="font-mono text-sm text-indigo-700 bg-indigo-50 rounded-lg px-3 py-1.5 border border-indigo-100">
+            <div className="font-mono text-xs sm:text-sm text-indigo-700 bg-indigo-50 rounded-lg px-3 py-1.5 border border-indigo-100 overflow-x-auto">
               {f.formula}
             </div>
 
             {/* Substituted values */}
-            <div className="font-mono text-sm text-slate-600 bg-white rounded-lg px-3 py-1.5 border border-slate-200">
+            <div className="font-mono text-xs sm:text-sm text-slate-600 bg-white rounded-lg px-3 py-1.5 border border-slate-200 overflow-x-auto">
               {f.substitution}
             </div>
 

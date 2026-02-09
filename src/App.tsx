@@ -12,10 +12,10 @@ import type { BatterySettings, Appliance, PowerSchedule } from './types';
 import { calculateBatteryStatus } from './utils/calculations';
 
 const defaultBatterySettings: BatterySettings = {
-  capacity: 60,
+  capacity: 82,
   minDischarge: 10,
   maxCharge: 95,
-  currentCharge: 75,
+  currentCharge: 0,
   chargingPower: 20,
 };
 
@@ -89,7 +89,7 @@ function App() {
     <div className="min-h-screen w-full px-4 py-6 md:px-6 md:py-8 lg:px-8 lg:py-10">
       <div className="w-full max-w-6xl" style={{ margin: '0 auto' }}>
         {/* Header */}
-        <header className="mb-8">
+        <header className="mb-5 md:mb-8">
           <div className="flex items-center gap-4">
             <div className="p-3 bg-gradient-to-br from-blue-500 to-blue-600 rounded-2xl shadow-lg shadow-blue-500/20">
               <Battery className="w-8 h-8 text-white" />
@@ -107,7 +107,7 @@ function App() {
         </header>
 
         {/* Main content */}
-        <main className="space-y-10">
+        <main className="space-y-6 md:space-y-10">
         
         {/* Section 1: Текущий статус */}
         <section>

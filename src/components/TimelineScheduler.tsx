@@ -2,6 +2,14 @@ import React, { useState, useCallback } from 'react';
 import { Calendar, GripHorizontal, Zap } from 'lucide-react';
 import type { Appliance, TimeRange, PowerSchedule } from '../types';
 
+// Extract clientX from mouse or touch event
+const getClientX = (e: React.MouseEvent | React.TouchEvent): number => {
+  if ('touches' in e) {
+    return e.touches[0]?.clientX ?? (e as React.TouchEvent).changedTouches[0]?.clientX ?? 0;
+  }
+  return (e as React.MouseEvent).clientX;
+};
+
 interface Props {
   appliances: Appliance[];
   onChange: (appliances: Appliance[]) => void;
@@ -22,7 +30,8 @@ export const TimelineScheduler: React.FC<Props> = ({ appliances, onChange, power
 
   const hours = Array.from({ length: 24 }, (_, i) => i);
 
-  const handleAddRange = (applianceId: string, hour: number) => {
+  const handleAddRange = (applianceId: string, clickHour: number) => {
+    const hour = Math.floor(clickHour * 2) / 2; // snap to 30 min
     onChange(
       appliances.map((a) => {
         if (a.id === applianceId) {
@@ -57,7 +66,8 @@ export const TimelineScheduler: React.FC<Props> = ({ appliances, onChange, power
     );
   };
 
-  const handleAddPowerPeriod = (hour: number) => {
+  const handleAddPowerPeriod = (clickHour: number) => {
+    const hour = Math.floor(clickHour * 2) / 2; // snap to 30 min
     const existingPeriod = powerSchedule.periods.find(
       (p) => hour >= p.start && hour < p.end
     );
@@ -75,9 +85,9 @@ export const TimelineScheduler: React.FC<Props> = ({ appliances, onChange, power
     });
   };
 
-  const handleMouseDown = useCallback(
+  const handlePointerDown = useCallback(
     (
-      e: React.MouseEvent,
+      e: React.MouseEvent | React.TouchEvent,
       targetType: 'appliance' | 'power',
       targetId: string,
       rangeIndex: number,
@@ -100,30 +110,36 @@ export const TimelineScheduler: React.FC<Props> = ({ appliances, onChange, power
         targetId,
         rangeIndex,
         type,
-        startX: e.clientX,
+        startX: getClientX(e),
         originalRange,
       });
     },
     [appliances, powerSchedule]
   );
 
-  const handleMouseMove = useCallback(
-    (e: React.MouseEvent, containerWidth: number) => {
-      if (!dragging) return;
+  const SNAP = 0.5; // 30-minute granularity
 
-      const deltaX = e.clientX - dragging.startX;
-      const deltaHours = Math.round((deltaX / containerWidth) * 24);
+  const snapTo = (val: number) => Math.round(val / SNAP) * SNAP;
+
+  const handlePointerMove = useCallback(
+    (e: React.MouseEvent | React.TouchEvent, containerWidth: number) => {
+      if (!dragging) return;
+      if ('touches' in e) e.preventDefault(); // prevent scroll while dragging
+
+      const deltaX = getClientX(e) - dragging.startX;
+      const rawDelta = (deltaX / containerWidth) * 24;
+      const deltaHours = Math.round(rawDelta / SNAP) * SNAP;
 
       const range = { ...dragging.originalRange };
 
       if (dragging.type === 'move') {
         const duration = range.end - range.start;
-        range.start = Math.max(0, Math.min(24 - duration, range.start + deltaHours));
+        range.start = snapTo(Math.max(0, Math.min(24 - duration, range.start + deltaHours)));
         range.end = range.start + duration;
       } else if (dragging.type === 'start') {
-        range.start = Math.max(0, Math.min(range.end - 1, range.start + deltaHours));
+        range.start = snapTo(Math.max(0, Math.min(range.end - SNAP, range.start + deltaHours)));
       } else if (dragging.type === 'end') {
-        range.end = Math.max(range.start + 1, Math.min(24, range.end + deltaHours));
+        range.end = snapTo(Math.max(range.start + SNAP, Math.min(24, range.end + deltaHours)));
       }
 
       if (dragging.targetType === 'power') {
@@ -146,12 +162,12 @@ export const TimelineScheduler: React.FC<Props> = ({ appliances, onChange, power
     [dragging, appliances, onChange, powerSchedule, onPowerScheduleChange]
   );
 
-  const handleMouseUp = useCallback(() => {
+  const handlePointerUp = useCallback(() => {
     setDragging(null);
   }, []);
 
   return (
-    <div className="bg-white rounded-2xl p-8 border border-slate-200 shadow-sm">
+    <div className="bg-white rounded-2xl p-4 sm:p-6 md:p-8 border border-slate-200 shadow-sm">
       <div className="flex items-center gap-3 mb-6">
         <div className="p-2.5 bg-cyan-50 rounded-xl">
           <Calendar className="w-5 h-5 text-cyan-600" />
@@ -163,7 +179,7 @@ export const TimelineScheduler: React.FC<Props> = ({ appliances, onChange, power
       </div>
 
       {/* Hour labels */}
-      <div className="flex mb-2 pl-28">
+      <div className="flex mb-2 pl-16 sm:pl-24 md:pl-28">
         {hours.map((hour) => (
           <div
             key={hour}
@@ -181,24 +197,33 @@ export const TimelineScheduler: React.FC<Props> = ({ appliances, onChange, power
         onMouseMove={(e) => {
           const container = e.currentTarget.querySelector('.timeline-container');
           if (container) {
-            handleMouseMove(e, container.clientWidth);
+            handlePointerMove(e, container.clientWidth);
           }
         }}
-        onMouseUp={handleMouseUp}
-        onMouseLeave={handleMouseUp}
+        onMouseUp={handlePointerUp}
+        onMouseLeave={handlePointerUp}
+        onTouchMove={(e) => {
+          const container = e.currentTarget.querySelector('.timeline-container');
+          if (container) {
+            handlePointerMove(e, container.clientWidth);
+          }
+        }}
+        onTouchEnd={handlePointerUp}
+        onTouchCancel={handlePointerUp}
       >
         {/* Power schedule bar */}
         <div className="flex items-center gap-3">
-          <div className="w-24 flex items-center gap-2 shrink-0">
+          <div className="w-12 sm:w-20 md:w-24 flex items-center gap-1 sm:gap-2 shrink-0">
             <Zap className="w-3 h-3 text-green-500" />
-            <span className="text-sm text-slate-600 truncate font-medium">Електрика</span>
+            <span className="text-xs sm:text-sm text-slate-600 truncate font-medium">Електрика</span>
           </div>
           <div
-            className="timeline-container flex-1 h-12 bg-red-50 rounded-lg relative cursor-pointer overflow-hidden border border-slate-200"
+            className="timeline-container flex-1 h-12 bg-red-50 rounded-lg relative cursor-pointer overflow-hidden border border-slate-200 touch-action-none"
+            style={{ touchAction: 'none' }}
             onClick={(e) => {
               const rect = e.currentTarget.getBoundingClientRect();
               const x = e.clientX - rect.left;
-              const hour = Math.floor((x / rect.width) * 24);
+              const hour = (x / rect.width) * 24;
               handleAddPowerPeriod(hour);
             }}
           >
@@ -225,23 +250,31 @@ export const TimelineScheduler: React.FC<Props> = ({ appliances, onChange, power
                   border: '2px solid #22c55e',
                 }}
                 onClick={(e) => e.stopPropagation()}
-                onMouseDown={(e) => handleMouseDown(e, 'power', 'power', index, 'move')}
+                onMouseDown={(e) => handlePointerDown(e, 'power', 'power', index, 'move')}
+                onTouchStart={(e) => handlePointerDown(e, 'power', 'power', index, 'move')}
                 onDoubleClick={() => handleRemovePowerPeriod(index)}
               >
                 {/* Drag handles */}
                 <div
-                  className="absolute left-0 top-0 bottom-0 w-2 cursor-ew-resize hover:bg-black/10 rounded-l"
-                  onMouseDown={(e) => handleMouseDown(e, 'power', 'power', index, 'start')}
+                  className="absolute left-0 top-0 bottom-0 w-3 sm:w-2 cursor-ew-resize hover:bg-black/10 active:bg-black/10 rounded-l"
+                  onMouseDown={(e) => handlePointerDown(e, 'power', 'power', index, 'start')}
+                  onTouchStart={(e) => handlePointerDown(e, 'power', 'power', index, 'start')}
                 />
                 <div
-                  className="absolute right-0 top-0 bottom-0 w-2 cursor-ew-resize hover:bg-black/10 rounded-r"
-                  onMouseDown={(e) => handleMouseDown(e, 'power', 'power', index, 'end')}
+                  className="absolute right-0 top-0 bottom-0 w-3 sm:w-2 cursor-ew-resize hover:bg-black/10 active:bg-black/10 rounded-r"
+                  onMouseDown={(e) => handlePointerDown(e, 'power', 'power', index, 'end')}
+                  onTouchStart={(e) => handlePointerDown(e, 'power', 'power', index, 'end')}
                 />
                 {/* Time label */}
-                <span className="text-xs font-semibold opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1 text-green-600">
-                  <GripHorizontal className="w-3 h-3" />
-                  {period.start}:00 - {period.end}:00
+                <span className="text-[10px] sm:text-xs font-semibold opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity flex items-center gap-1 text-green-600 pointer-events-none">
+                  <GripHorizontal className="w-3 h-3 hidden sm:block" />
+                  {Math.floor(period.start)}:{period.start % 1 ? '30' : '00'}-{Math.floor(period.end)}:{period.end % 1 ? '30' : '00'}
                 </span>
+                <button
+                  className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-500 text-white rounded-full text-xs font-bold flex items-center justify-center shadow-md sm:hidden z-10"
+                  onClick={(e) => { e.stopPropagation(); handleRemovePowerPeriod(index); }}
+                  onTouchStart={(e) => e.stopPropagation()}
+                >×</button>
               </div>
             ))}
           </div>
@@ -249,22 +282,23 @@ export const TimelineScheduler: React.FC<Props> = ({ appliances, onChange, power
 
         {appliances.filter(a => a.enabled).map((appliance) => (
           <div key={appliance.id} className="flex items-center gap-3">
-            <div className="w-24 flex items-center gap-2 shrink-0">
+            <div className="w-12 sm:w-20 md:w-24 flex items-center gap-1 sm:gap-2 shrink-0">
               <div
-                className="w-3 h-3 rounded-full"
+                className="w-2.5 h-2.5 sm:w-3 sm:h-3 rounded-full shrink-0"
                 style={{ backgroundColor: appliance.color }}
               />
-              <span className="text-sm text-slate-600 truncate font-medium">
+              <span className="text-xs sm:text-sm text-slate-600 truncate font-medium">
                 {appliance.nameUa}
               </span>
             </div>
 
             <div
               className="timeline-container flex-1 h-12 bg-slate-100 rounded-lg relative cursor-pointer overflow-hidden border border-slate-200"
+              style={{ touchAction: 'none' }}
               onClick={(e) => {
                 const rect = e.currentTarget.getBoundingClientRect();
                 const x = e.clientX - rect.left;
-                const hour = Math.floor((x / rect.width) * 24);
+                const hour = (x / rect.width) * 24;
                 handleAddRange(appliance.id, hour);
               }}
             >
@@ -283,6 +317,33 @@ export const TimelineScheduler: React.FC<Props> = ({ appliances, onChange, power
                 style={{ left: `${(currentHour / 24) * 100}%` }}
               />
 
+              {/* Always-on indicator (no schedule = works 24h) — click to convert to editable range */}
+              {appliance.schedule.length === 0 && (
+                <div
+                  className="absolute top-1.5 bottom-1.5 left-0 right-0 rounded-md flex items-center justify-center cursor-pointer hover:opacity-80 transition-opacity"
+                  style={{
+                    backgroundColor: `${appliance.color}18`,
+                    border: `2px dashed ${appliance.color}60`,
+                  }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    // Convert to explicit 0-24 range so user can drag/resize
+                    onChange(
+                      appliances.map((a) =>
+                        a.id === appliance.id
+                          ? { ...a, schedule: [{ start: 0, end: 24 }] }
+                          : a
+                      )
+                    );
+                  }}
+                  title="Клікніть щоб редагувати розклад"
+                >
+                  <span className="text-xs font-medium" style={{ color: appliance.color }}>
+                    24 год — клікніть для зміни
+                  </span>
+                </div>
+              )}
+
               {/* Time ranges */}
               {appliance.schedule.map((range, index) => (
                 <div
@@ -295,24 +356,32 @@ export const TimelineScheduler: React.FC<Props> = ({ appliances, onChange, power
                     border: `2px solid ${appliance.color}`,
                   }}
                   onClick={(e) => e.stopPropagation()}
-                  onMouseDown={(e) => handleMouseDown(e, 'appliance', appliance.id, index, 'move')}
+                  onMouseDown={(e) => handlePointerDown(e, 'appliance', appliance.id, index, 'move')}
+                  onTouchStart={(e) => handlePointerDown(e, 'appliance', appliance.id, index, 'move')}
                   onDoubleClick={() => handleRemoveRange(appliance.id, index)}
                 >
                   {/* Drag handles */}
                   <div
-                    className="absolute left-0 top-0 bottom-0 w-2 cursor-ew-resize hover:bg-black/10 rounded-l"
-                    onMouseDown={(e) => handleMouseDown(e, 'appliance', appliance.id, index, 'start')}
+                    className="absolute left-0 top-0 bottom-0 w-3 sm:w-2 cursor-ew-resize hover:bg-black/10 active:bg-black/10 rounded-l"
+                    onMouseDown={(e) => handlePointerDown(e, 'appliance', appliance.id, index, 'start')}
+                    onTouchStart={(e) => handlePointerDown(e, 'appliance', appliance.id, index, 'start')}
                   />
                   <div
-                    className="absolute right-0 top-0 bottom-0 w-2 cursor-ew-resize hover:bg-black/10 rounded-r"
-                    onMouseDown={(e) => handleMouseDown(e, 'appliance', appliance.id, index, 'end')}
+                    className="absolute right-0 top-0 bottom-0 w-3 sm:w-2 cursor-ew-resize hover:bg-black/10 active:bg-black/10 rounded-r"
+                    onMouseDown={(e) => handlePointerDown(e, 'appliance', appliance.id, index, 'end')}
+                    onTouchStart={(e) => handlePointerDown(e, 'appliance', appliance.id, index, 'end')}
                   />
 
                   {/* Time label */}
-                  <span className="text-xs font-semibold opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1" style={{ color: appliance.color }}>
-                    <GripHorizontal className="w-3 h-3" />
-                    {range.start}:00 - {range.end}:00
+                  <span className="text-[10px] sm:text-xs font-semibold opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity flex items-center gap-1 pointer-events-none" style={{ color: appliance.color }}>
+                    <GripHorizontal className="w-3 h-3 hidden sm:block" />
+                    {Math.floor(range.start)}:{range.start % 1 ? '30' : '00'}-{Math.floor(range.end)}:{range.end % 1 ? '30' : '00'}
                   </span>
+                  <button
+                    className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-500 text-white rounded-full text-xs font-bold flex items-center justify-center shadow-md sm:hidden z-10"
+                    onClick={(e) => { e.stopPropagation(); handleRemoveRange(appliance.id, index); }}
+                    onTouchStart={(e) => e.stopPropagation()}
+                  >×</button>
                 </div>
               ))}
             </div>
@@ -326,10 +395,11 @@ export const TimelineScheduler: React.FC<Props> = ({ appliances, onChange, power
         )}
       </div>
 
-      <div className="mt-4 flex items-center justify-center gap-6 text-xs text-slate-500 bg-slate-50 rounded-lg py-2">
-        <span>💡 Клік — додати</span>
+      <div className="mt-4 flex items-center justify-center gap-3 sm:gap-6 text-xs text-slate-500 bg-slate-50 rounded-lg py-2 flex-wrap">
+        <span>💡 Тап — додати</span>
         <span>🖱️ Тягнути — змінити</span>
-        <span>🗑️ Подвійний клік — видалити</span>
+        <span className="hidden sm:inline">🗑️ Подвійний клік — видалити</span>
+        <span className="sm:hidden">❌ × — видалити</span>
       </div>
     </div>
   );

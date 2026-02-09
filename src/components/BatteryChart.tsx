@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   Area,
   XAxis,
@@ -10,8 +10,9 @@ import {
   ComposedChart,
   Bar,
 } from 'recharts';
-import { BarChart3 } from 'lucide-react';
+import { BarChart3, Table2, ChevronDown } from 'lucide-react';
 import type { TimelinePoint, BatterySettings, PowerSchedule } from '../types';
+import { getChargeColor } from '../utils/calculations';
 
 interface Props {
   timelineData: TimelinePoint[];
@@ -21,6 +22,8 @@ interface Props {
 }
 
 export const BatteryChart: React.FC<Props> = ({ timelineData, battery, powerSchedule, currentHour }) => {
+  const [tableOpen, setTableOpen] = useState(false);
+
   const chartData = timelineData.map((point, index) => ({
     ...point,
     timeLabel: index === 0 ? `▶ ${point.time}:00` : `${point.time}:00`,
@@ -67,7 +70,7 @@ export const BatteryChart: React.FC<Props> = ({ timelineData, battery, powerSche
   };
 
   return (
-    <div className="bg-white rounded-2xl p-8 border border-slate-200 shadow-sm">
+    <div className="bg-white rounded-2xl p-4 sm:p-6 md:p-8 border border-slate-200 shadow-sm">
       <div className="flex items-center gap-3 mb-6">
         <div className="p-2.5 bg-blue-50 rounded-xl">
           <BarChart3 className="w-5 h-5 text-blue-600" />
@@ -78,9 +81,9 @@ export const BatteryChart: React.FC<Props> = ({ timelineData, battery, powerSche
         </div>
       </div>
 
-      <div className="h-72">
+      <div className="h-52 sm:h-64 md:h-72">
         <ResponsiveContainer width="100%" height="100%">
-          <ComposedChart data={chartData} margin={{ top: 10, right: 20, left: 10, bottom: 0 }}>
+          <ComposedChart data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
             <defs>
               <linearGradient id="batteryGradient" x1="0" y1="0" x2="0" y2="1">
                 <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.6} />
@@ -97,8 +100,8 @@ export const BatteryChart: React.FC<Props> = ({ timelineData, battery, powerSche
             <XAxis
               dataKey="timeLabel"
               stroke="#94a3b8"
-              tick={{ fill: '#64748b', fontSize: 12 }}
-              interval={2}
+              tick={{ fill: '#64748b', fontSize: 10 }}
+              interval={3}
             />
             <YAxis
               yAxisId="battery"
@@ -185,7 +188,7 @@ export const BatteryChart: React.FC<Props> = ({ timelineData, battery, powerSche
       </div>
 
       {/* Legend */}
-      <div className="flex items-center justify-center gap-6 mt-4 text-sm bg-slate-50 py-3 rounded-xl">
+      <div className="flex items-center justify-center gap-3 sm:gap-6 mt-4 text-xs sm:text-sm bg-slate-50 py-2 sm:py-3 rounded-xl flex-wrap">
         <div className="flex items-center gap-2">
           <div className="w-4 h-4 rounded bg-blue-500" />
           <span className="text-slate-600">Рівень заряду</span>
@@ -198,6 +201,142 @@ export const BatteryChart: React.FC<Props> = ({ timelineData, battery, powerSche
           <div className="w-6 h-0.5 border-t-2 border-dashed border-red-500" />
           <span className="text-slate-600">Ліміти</span>
         </div>
+      </div>
+
+      {/* Data table (collapsible) */}
+      <div className="mt-4">
+        <button
+          onClick={() => setTableOpen(!tableOpen)}
+          className="w-full flex items-center justify-center gap-2 py-2.5 px-4 bg-slate-50 hover:bg-slate-100 rounded-xl border border-slate-200 text-sm font-medium text-slate-600 transition-colors"
+        >
+          <Table2 className="w-4 h-4" />
+          Погодинна таблиця
+          <ChevronDown className={`w-4 h-4 transition-transform duration-200 ${tableOpen ? 'rotate-180' : ''}`} />
+        </button>
+
+        {tableOpen && (
+          <div className="mt-3 rounded-xl border border-slate-200 overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-slate-100 text-slate-600">
+                    <th className="px-3 py-2.5 text-left font-semibold text-xs whitespace-nowrap">🕐 Час</th>
+                    <th className="px-3 py-2.5 text-right font-semibold text-xs whitespace-nowrap">🔋 Заряд</th>
+                    <th className="px-3 py-2.5 text-right font-semibold text-xs whitespace-nowrap">⚡ кВт</th>
+                    <th className="px-3 py-2.5 text-center font-semibold text-xs whitespace-nowrap">💡 Мережа</th>
+                    <th className="px-3 py-2.5 text-left font-semibold text-xs whitespace-nowrap hidden sm:table-cell">📋 Прилади</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {timelineData.map((point, i) => {
+                    const levelColor = getChargeColor(point.batteryLevel);
+                    const isNow = i === 0;
+                    const isCritical = point.batteryLevel <= battery.minDischarge;
+                    const isLow = point.batteryLevel <= battery.minDischarge + 15;
+
+                    return (
+                      <tr
+                        key={i}
+                        className={`border-t border-slate-100 transition-colors ${
+                          isNow
+                            ? 'bg-blue-50/60'
+                            : isCritical
+                            ? 'bg-red-50/50'
+                            : isLow
+                            ? 'bg-amber-50/40'
+                            : i % 2 === 0
+                            ? 'bg-white'
+                            : 'bg-slate-50/40'
+                        }`}
+                      >
+                        {/* Time */}
+                        <td className="px-3 py-2 whitespace-nowrap">
+                          <div className="flex items-center gap-1.5">
+                            {isNow && <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />}
+                            <span className={`font-mono font-medium ${isNow ? 'text-blue-700' : 'text-slate-700'}`}>
+                              {point.time}:00
+                            </span>
+                            {isNow && <span className="text-[10px] text-blue-500 font-semibold">ЗАРАЗ</span>}
+                          </div>
+                        </td>
+
+                        {/* Battery level with mini bar */}
+                        <td className="px-3 py-2 text-right">
+                          <div className="flex items-center justify-end gap-2">
+                            <div className="w-16 h-2.5 bg-slate-200 rounded-full overflow-hidden hidden sm:block">
+                              <div
+                                className="h-full rounded-full transition-all"
+                                style={{
+                                  width: `${Math.min(100, Math.max(0, point.batteryLevel))}%`,
+                                  backgroundColor: levelColor,
+                                }}
+                              />
+                            </div>
+                            <span
+                              className="font-mono font-bold text-xs min-w-[3.5rem] text-right"
+                              style={{ color: levelColor }}
+                            >
+                              {point.batteryLevel.toFixed(1)}%
+                            </span>
+                          </div>
+                        </td>
+
+                        {/* Consumption */}
+                        <td className="px-3 py-2 text-right">
+                          {point.consumption > 0 ? (
+                            <span className="font-mono text-xs bg-purple-50 text-purple-700 px-2 py-0.5 rounded-md border border-purple-100">
+                              {point.consumption.toFixed(1)}
+                            </span>
+                          ) : (
+                            <span className="font-mono text-xs text-slate-300">0.0</span>
+                          )}
+                        </td>
+
+                        {/* Power status */}
+                        <td className="px-3 py-2 text-center">
+                          {point.charging ? (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-bold bg-green-100 text-green-700 px-2 py-0.5 rounded-full border border-green-200">
+                              ⚡ Так
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-bold bg-red-50 text-red-500 px-2 py-0.5 rounded-full border border-red-100">
+                              ✕ Ні
+                            </span>
+                          )}
+                        </td>
+
+                        {/* Active appliances */}
+                        <td className="px-3 py-2 hidden sm:table-cell">
+                          {point.appliances.length > 0 ? (
+                            <div className="flex flex-wrap gap-1">
+                              {point.appliances.map((name, j) => (
+                                <span
+                                  key={j}
+                                  className="text-[10px] bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded-md border border-slate-200"
+                                >
+                                  {name}
+                                </span>
+                              ))}
+                            </div>
+                          ) : (
+                            <span className="text-xs text-slate-300">—</span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Table legend */}
+            <div className="flex items-center justify-center gap-4 py-2 px-3 bg-slate-50 border-t border-slate-200 text-[10px] text-slate-400 flex-wrap">
+              <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-blue-500" /> Поточна година</span>
+              <span className="flex items-center gap-1"><span className="w-2 h-2 rounded bg-red-200" /> Критичний рівень</span>
+              <span className="flex items-center gap-1"><span className="w-2 h-2 rounded bg-amber-200" /> Низький рівень</span>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
