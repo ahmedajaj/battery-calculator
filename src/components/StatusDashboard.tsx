@@ -1,5 +1,5 @@
 import React from 'react';
-import { Clock, AlertTriangle, CheckCircle, BatteryFull, Zap, Timer, BatteryCharging } from 'lucide-react';
+import { Clock, BatteryFull, Zap, Timer, BatteryCharging } from 'lucide-react';
 import type { CalculationResult, BatterySettings } from '../types';
 import { formatHours, getChargeColor } from '../utils/calculations';
 
@@ -7,13 +7,14 @@ interface Props {
   result: CalculationResult;
   battery: BatterySettings;
   currentTime: Date;
+  apiMode?: boolean;
 }
 
-export const StatusDashboard: React.FC<Props> = ({ result, battery, currentTime }) => {
+export const StatusDashboard: React.FC<Props> = ({ result, battery, currentTime, apiMode = false }) => {
   const chargeColor = getChargeColor(battery.currentCharge);
   const timeStr = currentTime.toLocaleTimeString('uk-UA', { hour: '2-digit', minute: '2-digit' });
   const dateStr = currentTime.toLocaleDateString('uk-UA', { weekday: 'short', day: 'numeric', month: 'short' });
-  const needsCharge = battery.currentCharge === 0;
+  const needsCharge = !apiMode && battery.currentCharge === 0;
 
   return (
     <div className="bg-white rounded-2xl p-5 md:p-6 border border-slate-200 shadow-sm">
@@ -24,26 +25,13 @@ export const StatusDashboard: React.FC<Props> = ({ result, battery, currentTime 
         </div>
       )}
 
-      {/* Top row: time + survival badge */}
-      <div className="flex items-center justify-between mb-4">
+      {/* Top row: time */}
+      <div className="flex items-center mb-4">
         <div className="flex items-center gap-2.5">
           <Clock className="w-4 h-4 text-slate-400" />
           <span className="text-lg font-bold font-mono text-slate-800">{timeStr}</span>
           <span className="text-xs text-slate-400 capitalize">{dateStr}</span>
           <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
-        </div>
-        <div
-          className={`px-3 py-1.5 rounded-full flex items-center gap-1.5 text-xs font-bold ${
-            result.canSurviveOutage
-              ? 'bg-green-50 text-green-700 border border-green-200'
-              : 'bg-red-50 text-red-700 border border-red-200'
-          }`}
-        >
-          {result.canSurviveOutage ? (
-            <><CheckCircle className="w-3.5 h-3.5" />Вистачить</>
-          ) : (
-            <><AlertTriangle className="w-3.5 h-3.5" />Не вистачить</>
-          )}
         </div>
       </div>
 

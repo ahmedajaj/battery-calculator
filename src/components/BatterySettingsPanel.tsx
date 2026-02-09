@@ -1,18 +1,21 @@
 import React from 'react';
-import { Battery, Zap, BatteryCharging, ArrowDownToLine, ArrowUpToLine } from 'lucide-react';
-import type { BatterySettings } from '../types';
+import { Battery, Zap, BatteryCharging, ArrowDownToLine, ArrowUpToLine, Radio } from 'lucide-react';
+import type { BatterySettings, ApiLockedFields } from '../types';
 
 interface Props {
   settings: BatterySettings;
   onChange: (settings: BatterySettings) => void;
+  lockedFields?: ApiLockedFields;
 }
 
 const inputCls = "w-full bg-slate-50 border border-slate-200 rounded-md px-2.5 py-1.5 text-sm text-slate-800 font-mono focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 transition-all";
 
-export const BatterySettingsPanel: React.FC<Props> = ({ settings, onChange }) => {
+export const BatterySettingsPanel: React.FC<Props> = ({ settings, onChange, lockedFields }) => {
   const handleChange = (key: keyof BatterySettings, value: number) => {
     onChange({ ...settings, [key]: value });
   };
+
+  const chargeLocked = lockedFields?.currentCharge ?? false;
 
   return (
     <div className="bg-white rounded-2xl p-5 md:p-6 border border-slate-200 shadow-sm">
@@ -24,22 +27,46 @@ export const BatterySettingsPanel: React.FC<Props> = ({ settings, onChange }) =>
       </div>
 
       {/* Current Charge — highlighted, always on top */}
-      <div className="bg-amber-50 border-2 border-amber-300 rounded-xl p-3 mb-4 flex items-center gap-3">
-        <Zap className="w-4 h-4 text-amber-500 shrink-0" />
-        <label className="text-sm font-semibold text-amber-700 whitespace-nowrap">Поточний заряд</label>
+      <div className={`rounded-xl p-3 mb-4 flex items-center gap-3 ${
+        chargeLocked
+          ? 'bg-emerald-50 border-2 border-emerald-300'
+          : 'bg-amber-50 border-2 border-amber-300'
+      }`}>
+        {chargeLocked ? (
+          <Radio className="w-4 h-4 text-emerald-500 animate-pulse shrink-0" />
+        ) : (
+          <Zap className="w-4 h-4 text-amber-500 shrink-0" />
+        )}
+        <label className={`text-sm font-semibold whitespace-nowrap ${chargeLocked ? 'text-emerald-700' : 'text-amber-700'}`}>
+          Поточний заряд
+        </label>
         <div className="relative flex-1 max-w-[120px]">
-          <input
-            type="number"
-            min="0"
-            max="100"
-            value={settings.currentCharge || ''}
-            placeholder="—"
-            onChange={(e) => handleChange('currentCharge', parseInt(e.target.value) || 0)}
-            className="w-full bg-white border-2 border-amber-300 rounded-md px-2.5 py-1.5 text-amber-800 font-mono font-bold text-base focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500/20 transition-all placeholder:text-amber-300"
-          />
-          <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-amber-500 text-xs font-semibold">%</span>
+          {chargeLocked ? (
+            <div className="w-full bg-white border-2 border-emerald-300 rounded-md px-2.5 py-1.5 text-emerald-800 font-mono font-bold text-base text-center">
+              {settings.currentCharge}%
+            </div>
+          ) : (
+            <>
+              <input
+                type="number"
+                min="0"
+                max="100"
+                value={settings.currentCharge || ''}
+                placeholder="—"
+                onChange={(e) => handleChange('currentCharge', parseInt(e.target.value) || 0)}
+                className="w-full bg-white border-2 border-amber-300 rounded-md px-2.5 py-1.5 text-amber-800 font-mono font-bold text-base focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500/20 transition-all placeholder:text-amber-300"
+              />
+              <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-amber-500 text-xs font-semibold">%</span>
+            </>
+          )}
         </div>
-        <span className="text-xs text-amber-500 hidden sm:inline">⟵ вкажіть щоразу</span>
+        {chargeLocked ? (
+          <span className="text-[10px] font-bold bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full border border-emerald-200 hidden sm:inline-flex items-center gap-1">
+            <Radio className="w-2.5 h-2.5" />LIVE
+          </span>
+        ) : (
+          <span className="text-xs text-amber-500 hidden sm:inline">⟵ вкажіть щоразу</span>
+        )}
       </div>
 
       {/* Config fields — compact row */}

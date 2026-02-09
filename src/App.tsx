@@ -7,9 +7,47 @@ import {
   BatteryChart,
   StatusDashboard,
   FormulaSection,
+  DataModePanel,
 } from './components';
-import type { BatterySettings, Appliance, PowerSchedule } from './types';
+import type { BatterySettings, Appliance, PowerSchedule, ApiLockedFields, TimeRange, YasnoSlot } from './types';
 import { calculateBatteryStatus } from './utils/calculations';
+import { useYasnoData } from './hooks/useYasnoData';
+import { useDeyeData } from './hooks/useDeyeData';
+
+/**
+ * Build a merged PowerSchedule from Yasno today+tomorrow slots.
+ * Hours >= startHour use today's data, hours < startHour use tomorrow's.
+ * Only "NotPlanned" slots become power-on periods.
+ */
+function buildScheduleFromYasno(
+  todaySlots: YasnoSlot[],
+  tomorrowSlots: YasnoSlot[],
+  startHour: number,
+): PowerSchedule {
+  const periods: TimeRange[] = [];
+
+  // Today's NotPlanned slots for hours >= startHour
+  for (const slot of todaySlots) {
+    if (slot.type !== 'NotPlanned') continue;
+    const s = slot.start / 60;
+    const e = slot.end / 60;
+    const cs = Math.max(s, startHour);
+    const ce = Math.min(e, 24);
+    if (cs < ce) periods.push({ start: cs, end: ce });
+  }
+
+  // Tomorrow's NotPlanned slots for hours < startHour
+  for (const slot of tomorrowSlots) {
+    if (slot.type !== 'NotPlanned') continue;
+    const s = slot.start / 60;
+    const e = slot.end / 60;
+    const cs = Math.max(s, 0);
+    const ce = Math.min(e, startHour);
+    if (cs < ce) periods.push({ start: cs, end: ce });
+  }
+
+  return { periods };
+}
 
 const defaultBatterySettings: BatterySettings = {
   capacity: 82,
@@ -56,7 +94,7 @@ const defaultAppliances: Appliance[] = [
     nameUa: 'Освітлення',
     icon: 'lightbulb',
     power: 0.4,
-    enabled: true,
+    enabled: false,
     color: '#f59e0b',
     schedule: [{ start: 18, end: 24 }, { start: 0, end: 6 }],
   },
@@ -72,6 +110,12 @@ function App() {
   const [powerSchedule, setPowerSchedule] = useState<PowerSchedule>(defaultPowerSchedule);
   const [currentTime, setCurrentTime] = useState(() => new Date());
 
+  // Yasno data source
+  const yasno = useYasnoData(60_000);
+
+  // Deye battery data source
+  const deye = useDeyeData(60_000);
+
   // Update current time every minute
   useEffect(() => {
     const interval = setInterval(() => setCurrentTime(new Date()), 60_000);
@@ -80,10 +124,35 @@ function App() {
 
   const currentHour = currentTime.getHours() + currentTime.getMinutes() / 60;
 
+  // ── Merge Yasno data over manual state ──
+  const isYasno = yasno.mode === 'yasno' && yasno.groupData !== null;
+
+  // ── Merge Deye SOC over manual battery charge ──
+  const isDeyeLive = deye.mode === 'deye' && deye.soc !== null;
+
+  const effectiveBatterySettings = useMemo<BatterySettings>(() => {
+    if (!isDeyeLive || deye.soc === null) return batterySettings;
+    return { ...batterySettings, currentCharge: deye.soc };
+  }, [batterySettings, isDeyeLive, deye.soc]);
+
+  const effectivePowerSchedule = useMemo<PowerSchedule>(() => {
+    if (!isYasno || !yasno.groupData) return powerSchedule;
+    return buildScheduleFromYasno(
+      yasno.groupData.today.slots,
+      yasno.groupData.tomorrow.slots,
+      Math.floor(currentHour),
+    );
+  }, [powerSchedule, isYasno, yasno.groupData, currentHour]);
+
+  const lockedFields = useMemo<ApiLockedFields>(() => ({
+    currentCharge: isDeyeLive,
+    powerSchedule: isYasno,
+  }), [isDeyeLive, isYasno]);
+
   // Calculate all results reactively
   const calculationResult = useMemo(() => {
-    return calculateBatteryStatus(batterySettings, appliances, powerSchedule, currentHour);
-  }, [batterySettings, appliances, powerSchedule, currentHour]);
+    return calculateBatteryStatus(effectiveBatterySettings, appliances, effectivePowerSchedule, currentHour);
+  }, [effectiveBatterySettings, appliances, effectivePowerSchedule, currentHour]);
 
   return (
     <div className="min-h-screen w-full px-4 py-6 md:px-6 md:py-8 lg:px-8 lg:py-10">
@@ -108,6 +177,28 @@ function App() {
 
         {/* Main content */}
         <main className="space-y-6 md:space-y-10">
+
+        {/* Data mode selector */}
+        <DataModePanel
+          batteryMode={deye.mode}
+          onBatteryModeChange={deye.setMode}
+          batterySOC={deye.soc}
+          batteryLoading={deye.loading}
+          batteryError={deye.error}
+          batteryLastUpdated={deye.lastUpdated}
+          onBatteryRefetch={deye.refetch}
+          batteryTokenConfigured={deye.tokenConfigured}
+          scheduleMode={yasno.mode}
+          onScheduleModeChange={yasno.setMode}
+          group={yasno.group}
+          onGroupChange={yasno.setGroup}
+          groupData={yasno.groupData}
+          availableGroups={yasno.availableGroups}
+          scheduleLoading={yasno.loading}
+          scheduleError={yasno.error}
+          scheduleLastUpdated={yasno.lastUpdated}
+          onScheduleRefetch={yasno.refetch}
+        />
         
         {/* Section 1: Текущий статус */}
         <section>
@@ -115,7 +206,7 @@ function App() {
             <span className="section-number">1</span>
             Поточний статус системи
           </div>
-          <StatusDashboard result={calculationResult} battery={batterySettings} currentTime={currentTime} />
+          <StatusDashboard result={calculationResult} battery={effectiveBatterySettings} currentTime={currentTime} />
         </section>
 
         {/* Section 2: Настройки */}
@@ -124,7 +215,7 @@ function App() {
             <span className="section-number">2</span>
             Параметри батареї
           </div>
-          <BatterySettingsPanel settings={batterySettings} onChange={setBatterySettings} />
+          <BatterySettingsPanel settings={effectiveBatterySettings} onChange={setBatterySettings} lockedFields={lockedFields} />
         </section>
 
         {/* Section 3: Приборы */}
@@ -142,7 +233,7 @@ function App() {
             <span className="section-number">4</span>
             Розклад роботи приладів
           </div>
-          <TimelineScheduler appliances={appliances} onChange={setAppliances} powerSchedule={powerSchedule} onPowerScheduleChange={setPowerSchedule} currentHour={currentHour} />
+          <TimelineScheduler appliances={appliances} onChange={setAppliances} powerSchedule={effectivePowerSchedule} onPowerScheduleChange={setPowerSchedule} currentHour={currentHour} powerScheduleLocked={lockedFields.powerSchedule} />
         </section>
 
         {/* Section 5: Прогноз */}
@@ -153,8 +244,8 @@ function App() {
           </div>
           <BatteryChart
             timelineData={calculationResult.timelineData}
-            battery={batterySettings}
-            powerSchedule={powerSchedule}
+            battery={effectiveBatterySettings}
+            powerSchedule={effectivePowerSchedule}
             currentHour={currentHour}
           />
         </section>
@@ -165,7 +256,7 @@ function App() {
             <span className="section-number">6</span>
             Довідка
           </div>
-          <FormulaSection result={calculationResult} battery={batterySettings} />
+          <FormulaSection result={calculationResult} battery={effectiveBatterySettings} />
         </section>
 
         {/* Footer */}

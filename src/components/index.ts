@@ -4,3 +4,4 @@ export { TimelineScheduler } from './TimelineScheduler';
 export { BatteryChart } from './BatteryChart';
 export { StatusDashboard } from './StatusDashboard';
 export { FormulaSection } from './FormulaSection';
+export { DataModePanel } from './DataModePanel';
