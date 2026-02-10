@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useCallback } from 'react';
 import { Battery, Zap } from 'lucide-react';
 import {
   BatterySettingsPanel,
@@ -8,6 +8,7 @@ import {
   StatusDashboard,
   FormulaSection,
   DataModePanel,
+  ScenarioPanel,
 } from './components';
 import type { BatterySettings, Appliance, PowerSchedule, ApiLockedFields, TimeRange, YasnoSlot } from './types';
 import { calculateBatteryStatus } from './utils/calculations';
@@ -86,7 +87,7 @@ const defaultAppliances: Appliance[] = [
     power: 3.0,
     enabled: true,
     color: '#a855f7',
-    schedule: [{ start: 7, end: 9 }, { start: 18, end: 20 }],
+    schedule: [{ start: 7, end: 9 }, { start: 18.5, end: 20.5 }],
   },
   {
     id: 'lighting',
@@ -107,6 +108,7 @@ const defaultPowerSchedule: PowerSchedule = {
 function App() {
   const [batterySettings, setBatterySettings] = useState<BatterySettings>(defaultBatterySettings);
   const [appliances, setAppliances] = useState<Appliance[]>(defaultAppliances);
+  const [activeScenarioId, setActiveScenarioId] = useState<string | null>(null);
   const [powerSchedule, setPowerSchedule] = useState<PowerSchedule>(defaultPowerSchedule);
   const [currentTime, setCurrentTime] = useState(() => new Date());
 
@@ -160,6 +162,17 @@ function App() {
   const calculationResult = useMemo(() => {
     return calculateBatteryStatus(effectiveBatterySettings, appliances, effectivePowerSchedule, currentHour);
   }, [effectiveBatterySettings, appliances, effectivePowerSchedule, currentHour]);
+
+  // Appliance-change handlers (clear active scenario on manual edits)
+  const handleAppliancesChange = useCallback((newAppliances: Appliance[]) => {
+    setAppliances(newAppliances);
+    setActiveScenarioId(null);
+  }, []);
+
+  const handleApplyScenario = useCallback((scenarioId: string, newAppliances: Appliance[]) => {
+    setAppliances(newAppliances);
+    setActiveScenarioId(scenarioId);
+  }, []);
 
   return (
     <div className="min-h-screen w-full px-4 py-6 md:px-6 md:py-8 lg:px-8 lg:py-10">
@@ -231,7 +244,7 @@ function App() {
             <span className="section-number">3</span>
             Керування приладами
           </div>
-          <ApplianceControls appliances={appliances} onChange={setAppliances} />
+          <ApplianceControls appliances={appliances} onChange={handleAppliancesChange} />
         </section>
 
         {/* Section 4: Расписание */}
@@ -240,8 +253,18 @@ function App() {
             <span className="section-number">4</span>
             Розклад роботи приладів
           </div>
-          <TimelineScheduler appliances={appliances} onChange={setAppliances} powerSchedule={effectivePowerSchedule} onPowerScheduleChange={setPowerSchedule} currentHour={currentHour} powerScheduleLocked={lockedFields.powerSchedule} tomorrowHasData={tomorrowHasData} />
+          <TimelineScheduler appliances={appliances} onChange={handleAppliancesChange} powerSchedule={effectivePowerSchedule} onPowerScheduleChange={setPowerSchedule} currentHour={currentHour} powerScheduleLocked={lockedFields.powerSchedule} tomorrowHasData={tomorrowHasData} />
         </section>
+
+        {/* AI Scenario suggestions (near section 4) */}
+        <ScenarioPanel
+          battery={effectiveBatterySettings}
+          appliances={appliances}
+          powerSchedule={effectivePowerSchedule}
+          currentHour={currentHour}
+          onApply={handleApplyScenario}
+          activeScenarioId={activeScenarioId}
+        />
 
         {/* Section 5: Прогноз */}
         <section>

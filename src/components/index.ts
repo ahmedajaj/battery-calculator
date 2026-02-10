@@ -5,3 +5,4 @@ export { BatteryChart } from './BatteryChart';
 export { StatusDashboard } from './StatusDashboard';
 export { FormulaSection } from './FormulaSection';
 export { DataModePanel } from './DataModePanel';
+export { ScenarioPanel } from './ScenarioPanel';
