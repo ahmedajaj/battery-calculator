@@ -4,8 +4,8 @@ import type { DataMode, YasnoGroupData, YasnoApiResponse } from '../types';
 const YASNO_API_URL =
   'https://app.yasno.ua/api/blackout-service/public/shutdowns/regions/25/dsos/902/planned-outages';
 
-/** Local dev proxy (Vite rewrites /api/yasno → app.yasno.ua) */
-const DEV_PROXY_URL = '/api/yasno/planned-outages';
+/** Proxy URL — works in dev (Vite proxy) and prod (nginx proxy under base path) */
+const PROXY_URL = `${import.meta.env.BASE_URL}api/yasno/planned-outages`;
 
 /** CORS proxies for production — try in order until one works */
 const CORS_PROXIES = [
@@ -64,10 +64,11 @@ export function useYasnoData(pollInterval = 60_000): UseYasnoDataReturn {
 
       // In dev mode, use Vite proxy first (no CORS issues)
       // In production, try direct → CORS proxies
-      const isDev = import.meta.env.DEV;
-      const urls = isDev
-        ? [DEV_PROXY_URL, YASNO_API_URL, ...CORS_PROXIES.map((p) => p(YASNO_API_URL))]
-        : [YASNO_API_URL, ...CORS_PROXIES.map((p) => p(YASNO_API_URL))];
+      const urls = [
+        PROXY_URL,
+        YASNO_API_URL,
+        ...CORS_PROXIES.map((p) => p(YASNO_API_URL)),
+      ];
       let lastErr: Error | null = null;
 
       for (const url of urls) {

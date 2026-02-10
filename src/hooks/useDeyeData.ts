@@ -3,8 +3,8 @@ import type { BatteryMode } from '../types';
 
 const DEYE_API_URL = 'https://eu1-developer.deyecloud.com/v1.0/station/latest';
 
-/** Local dev proxy (Vite rewrites /api/deye → eu1-developer.deyecloud.com) */
-const DEV_PROXY_URL = '/api/deye/latest';
+/** Proxy URL — works in dev (Vite proxy) and prod (nginx proxy under base path) */
+const PROXY_URL = `${import.meta.env.BASE_URL}api/deye/latest`;
 
 /** CORS proxies for production — try in order until one works */
 const CORS_PROXIES = [
@@ -58,18 +58,18 @@ export function useDeyeData(pollInterval = 60_000): UseDeyeDataReturn {
 
     try {
       setLoading(true);
-      const isDev = import.meta.env.DEV;
       const body = JSON.stringify({ stationId: parseInt(stationId, 10) });
       const headers: Record<string, string> = {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${token}`,
       };
 
-      // In dev → Vite proxy first, then direct, then CORS proxies
-      // In prod → direct, then CORS proxies
-      const urls = isDev
-        ? [DEV_PROXY_URL, DEYE_API_URL, ...CORS_PROXIES.map((p) => p(DEYE_API_URL))]
-        : [DEYE_API_URL, ...CORS_PROXIES.map((p) => p(DEYE_API_URL))];
+      // Try nginx/Vite proxy first, then direct, then CORS proxies
+      const urls = [
+        PROXY_URL,
+        DEYE_API_URL,
+        ...CORS_PROXIES.map((p) => p(DEYE_API_URL)),
+      ];
 
       let lastErr: Error | null = null;
 
