@@ -17,9 +17,10 @@ interface Props {
   onPowerScheduleChange: (schedule: PowerSchedule) => void;
   currentHour: number;
   powerScheduleLocked?: boolean;
+  tomorrowHasData?: boolean;
 }
 
-export const TimelineScheduler: React.FC<Props> = ({ appliances, onChange, powerSchedule, onPowerScheduleChange, currentHour, powerScheduleLocked = false }) => {
+export const TimelineScheduler: React.FC<Props> = ({ appliances, onChange, powerSchedule, onPowerScheduleChange, currentHour, powerScheduleLocked = false, tomorrowHasData = true }) => {
   const [dragging, setDragging] = useState<{
     targetType: 'appliance' | 'power';
     targetId: string;
@@ -57,6 +58,7 @@ export const TimelineScheduler: React.FC<Props> = ({ appliances, onChange, power
   };
 
   const nowVisual = currentHour - startHour;
+  const midnightVisual = startHour > 0 ? 24 - startHour : 0;
 
   const handleAddRange = (applianceId: string, clickHour: number) => {
     const hour = Math.floor(clickHour * 2) / 2; // snap to 30 min
@@ -327,6 +329,25 @@ export const TimelineScheduler: React.FC<Props> = ({ appliances, onChange, power
                 <div key={idx} className="flex-1 border-r border-red-200/50" />
               ))}
             </div>
+            {/* Midnight day boundary */}
+            {midnightVisual > 0 && midnightVisual < 24 && (
+              <div
+                className="absolute top-0 bottom-0 w-0.5 z-20 pointer-events-none"
+                style={{ left: `${(midnightVisual / 24) * 100}%`, background: 'repeating-linear-gradient(to bottom, #6366f1 0px, #6366f1 4px, transparent 4px, transparent 8px)' }}
+              />
+            )}
+            {/* Uncertainty overlay when tomorrow has no data */}
+            {!tomorrowHasData && midnightVisual > 0 && midnightVisual < 24 && (
+              <div
+                className="absolute top-0 bottom-0 z-10 pointer-events-none"
+                style={{
+                  left: `${(midnightVisual / 24) * 100}%`,
+                  right: 0,
+                  background: 'repeating-linear-gradient(45deg, transparent, transparent 4px, rgba(245,158,11,0.12) 4px, rgba(245,158,11,0.12) 8px)',
+                  borderLeft: '1px dashed #f59e0b',
+                }}
+              />
+            )}
             {/* Now indicator — near left edge */}
             <div
               className="absolute top-0 bottom-0 w-0.5 bg-red-500 z-20 pointer-events-none"
@@ -369,6 +390,25 @@ export const TimelineScheduler: React.FC<Props> = ({ appliances, onChange, power
                   />
                 ))}
               </div>
+              {/* Midnight day boundary */}
+              {midnightVisual > 0 && midnightVisual < 24 && (
+                <div
+                  className="absolute top-0 bottom-0 w-0.5 z-20 pointer-events-none"
+                  style={{ left: `${(midnightVisual / 24) * 100}%`, background: 'repeating-linear-gradient(to bottom, #6366f1 0px, #6366f1 4px, transparent 4px, transparent 8px)' }}
+                />
+              )}
+              {/* Uncertainty overlay when tomorrow has no data */}
+              {!tomorrowHasData && midnightVisual > 0 && midnightVisual < 24 && (
+                <div
+                  className="absolute top-0 bottom-0 z-10 pointer-events-none"
+                  style={{
+                    left: `${(midnightVisual / 24) * 100}%`,
+                    right: 0,
+                    background: 'repeating-linear-gradient(45deg, transparent, transparent 4px, rgba(245,158,11,0.12) 4px, rgba(245,158,11,0.12) 8px)',
+                    borderLeft: '1px dashed #f59e0b',
+                  }}
+                />
+              )}
               {/* Now indicator */}
               <div
                 className="absolute top-0 bottom-0 w-0.5 bg-red-500 z-20 pointer-events-none"

@@ -86,6 +86,16 @@ function generateTimeline(
     // When grid power is on, appliances run from grid — battery consumption = 0
     const batteryConsumption = isPowerOn ? 0 : applianceConsumption;
 
+    // Record state at the START of this hour
+    points.push({
+      time: hour,
+      batteryLevel: Math.round(batteryLevel * 10) / 10,
+      consumption: batteryConsumption,
+      charging: isPowerOn,
+      appliances: activeAppliances.map(a => a.nameUa),
+    });
+
+    // Then apply changes that happen during this hour (affects next point)
     if (isPowerOn) {
       // Charging — full charger power, no consumption from battery
       const chargeRate = (battery.chargingPower / battery.capacity) * 100;
@@ -95,14 +105,6 @@ function generateTimeline(
       const dischargeRate = (batteryConsumption / battery.capacity) * 100;
       batteryLevel = Math.max(battery.minDischarge, batteryLevel - dischargeRate);
     }
-
-    points.push({
-      time: hour,
-      batteryLevel: Math.round(batteryLevel * 10) / 10,
-      consumption: batteryConsumption,
-      charging: isPowerOn,
-      appliances: activeAppliances.map(a => a.nameUa),
-    });
   }
 
   return points;

@@ -149,6 +149,13 @@ function App() {
     powerSchedule: isYasno,
   }), [isDeyeLive, isYasno]);
 
+  // Check if tomorrow's Yasno data is available (non-empty slots)
+  const tomorrowHasData = useMemo(() => {
+    if (yasno.mode !== 'yasno') return true; // manual mode — user controls everything
+    if (!yasno.groupData) return true; // no data yet — don't show uncertain until connected
+    return yasno.groupData.tomorrow.slots.length > 0;
+  }, [yasno.mode, yasno.groupData]);
+
   // Calculate all results reactively
   const calculationResult = useMemo(() => {
     return calculateBatteryStatus(effectiveBatterySettings, appliances, effectivePowerSchedule, currentHour);
@@ -233,7 +240,7 @@ function App() {
             <span className="section-number">4</span>
             Розклад роботи приладів
           </div>
-          <TimelineScheduler appliances={appliances} onChange={setAppliances} powerSchedule={effectivePowerSchedule} onPowerScheduleChange={setPowerSchedule} currentHour={currentHour} powerScheduleLocked={lockedFields.powerSchedule} />
+          <TimelineScheduler appliances={appliances} onChange={setAppliances} powerSchedule={effectivePowerSchedule} onPowerScheduleChange={setPowerSchedule} currentHour={currentHour} powerScheduleLocked={lockedFields.powerSchedule} tomorrowHasData={tomorrowHasData} />
         </section>
 
         {/* Section 5: Прогноз */}
@@ -247,6 +254,7 @@ function App() {
             battery={effectiveBatterySettings}
             powerSchedule={effectivePowerSchedule}
             currentHour={currentHour}
+            tomorrowHasData={tomorrowHasData}
           />
         </section>
 

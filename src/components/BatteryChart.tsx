@@ -7,6 +7,7 @@ import {
   Tooltip,
   ResponsiveContainer,
   ReferenceLine,
+  ReferenceArea,
   ComposedChart,
   Bar,
 } from 'recharts';
@@ -19,9 +20,10 @@ interface Props {
   battery: BatterySettings;
   powerSchedule: PowerSchedule;
   currentHour: number;
+  tomorrowHasData?: boolean;
 }
 
-export const BatteryChart: React.FC<Props> = ({ timelineData, battery, powerSchedule, currentHour }) => {
+export const BatteryChart: React.FC<Props> = ({ timelineData, battery, powerSchedule, currentHour, tomorrowHasData = true }) => {
   const [tableOpen, setTableOpen] = useState(false);
 
   const chartData = timelineData.map((point, index) => ({
@@ -31,11 +33,24 @@ export const BatteryChart: React.FC<Props> = ({ timelineData, battery, powerSche
     consumption: point.consumption,
   }));
 
+  // Midnight label for the day boundary line
+  const startHour = Math.floor(currentHour);
+  const midnightIndex = startHour > 0 ? 24 - startHour : 0;
+  const midnightLabel = midnightIndex > 0 && midnightIndex < 24
+    ? chartData[midnightIndex]?.timeLabel
+    : null;
+
+  // Uncertainty area: labels from midnight to end when tomorrow has no data
+  const uncertaintyStart = !tomorrowHasData && midnightLabel ? midnightLabel : null;
+  const uncertaintyEnd = !tomorrowHasData && midnightLabel ? chartData[chartData.length - 1]?.timeLabel : null;
+
   // Collect power schedule boundary reference lines
   const powerRefLines: { label: string; color: string; text: string }[] = [];
   for (const period of powerSchedule.periods) {
-    const onLabel = chartData.find(d => d.time === period.start)?.timeLabel;
-    const offLabel = chartData.find(d => d.time === period.end % 24)?.timeLabel;
+    const onHour = Math.round(period.start) % 24;
+    const offHour = Math.round(period.end) % 24;
+    const onLabel = chartData.find(d => d.time === onHour)?.timeLabel;
+    const offLabel = chartData.find(d => d.time === offHour)?.timeLabel;
     if (onLabel) powerRefLines.push({ label: onLabel, color: '#22c55e', text: '⚡ Увімк' });
     if (offLabel) powerRefLines.push({ label: offLabel, color: '#ef4444', text: '❌ Вимк' });
   }
@@ -83,7 +98,7 @@ export const BatteryChart: React.FC<Props> = ({ timelineData, battery, powerSche
 
       <div className="h-52 sm:h-64 md:h-72">
         <ResponsiveContainer width="100%" height="100%">
-          <ComposedChart data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+          <ComposedChart data={chartData} margin={{ top: 22, right: 10, left: 0, bottom: 0 }}>
             <defs>
               <linearGradient id="batteryGradient" x1="0" y1="0" x2="0" y2="1">
                 <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.6} />
@@ -149,10 +164,48 @@ export const BatteryChart: React.FC<Props> = ({ timelineData, battery, powerSche
               }}
             />
 
+            {/* Midnight day boundary */}
+            {midnightLabel && (
+              <ReferenceLine
+                yAxisId="battery"
+                x={midnightLabel}
+                stroke="#6366f1"
+                strokeWidth={2}
+                strokeDasharray="6 3"
+                label={{
+                  value: '🌙 00:00',
+                  fill: '#6366f1',
+                  fontSize: 10,
+                  position: 'top',
+                }}
+              />
+            )}
+
+            {/* Uncertainty area when tomorrow data is missing */}
+            {uncertaintyStart && uncertaintyEnd && (
+              <ReferenceArea
+                yAxisId="battery"
+                x1={uncertaintyStart}
+                x2={uncertaintyEnd}
+                fill="#f59e0b"
+                fillOpacity={0.08}
+                stroke="#f59e0b"
+                strokeOpacity={0.3}
+                strokeDasharray="4 4"
+                label={{
+                  value: '⚠ Немає даних на завтра',
+                  fill: '#d97706',
+                  fontSize: 10,
+                  position: 'insideTop',
+                }}
+              />
+            )}
+
             {/* Power on/off indicators */}
             {powerRefLines.map((line, i) => (
               <ReferenceLine
                 key={`power-${i}`}
+                yAxisId="battery"
                 x={line.label}
                 stroke={line.color}
                 strokeWidth={2}
@@ -201,6 +254,10 @@ export const BatteryChart: React.FC<Props> = ({ timelineData, battery, powerSche
           <div className="w-6 h-0.5 border-t-2 border-dashed border-red-500" />
           <span className="text-slate-600">Ліміти</span>
         </div>
+        <div className="flex items-center gap-2">
+          <div className="w-4 h-4 border-l-2 border-dashed border-indigo-500" />
+          <span className="text-slate-600">Північ</span>
+        </div>
       </div>
 
       {/* Data table (collapsible) */}
@@ -231,12 +288,24 @@ export const BatteryChart: React.FC<Props> = ({ timelineData, battery, powerSche
                   {timelineData.map((point, i) => {
                     const levelColor = getChargeColor(point.batteryLevel);
                     const isNow = i === 0;
+                    const isMidnight = i > 0 && point.time === 0;
+                    const isUncertain = !tomorrowHasData && midnightIndex > 0 && i >= midnightIndex;
                     const isCritical = point.batteryLevel <= battery.minDischarge;
                     const isLow = point.batteryLevel <= battery.minDischarge + 15;
 
                     return (
+                      <React.Fragment key={i}>
+                      {isMidnight && (
+                        <tr className="bg-indigo-50/80">
+                          <td colSpan={5} className="px-3 py-1.5 text-center">
+                            <span className="text-[11px] font-semibold text-indigo-600">🌙 Нова доба — 00:00</span>
+                            {!tomorrowHasData && (
+                              <span className="ml-2 text-[10px] text-amber-600 font-medium">⚠ Немає даних Yasno</span>
+                            )}
+                          </td>
+                        </tr>
+                      )}
                       <tr
-                        key={i}
                         className={`border-t border-slate-100 transition-colors ${
                           isNow
                             ? 'bg-blue-50/60'
@@ -244,6 +313,8 @@ export const BatteryChart: React.FC<Props> = ({ timelineData, battery, powerSche
                             ? 'bg-red-50/50'
                             : isLow
                             ? 'bg-amber-50/40'
+                            : isUncertain
+                            ? 'bg-amber-50/30'
                             : i % 2 === 0
                             ? 'bg-white'
                             : 'bg-slate-50/40'
@@ -257,6 +328,7 @@ export const BatteryChart: React.FC<Props> = ({ timelineData, battery, powerSche
                               {point.time}:00
                             </span>
                             {isNow && <span className="text-[10px] text-blue-500 font-semibold">ЗАРАЗ</span>}
+                            {isUncertain && <span className="text-[10px] text-amber-500">⚠</span>}
                           </div>
                         </td>
 
@@ -323,6 +395,7 @@ export const BatteryChart: React.FC<Props> = ({ timelineData, battery, powerSche
                           )}
                         </td>
                       </tr>
+                      </React.Fragment>
                     );
                   })}
                 </tbody>
