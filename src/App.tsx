@@ -51,6 +51,50 @@ function buildScheduleFromYasno(
   return { periods };
 }
 
+/**
+ * When tomorrow's ДТЕК schedule is unknown, estimate it based on today's
+ * on-period pattern and a user-configurable off-gap (hours between last
+ * power-off and next power-on).
+ */
+function buildEstimatedTomorrowSlots(
+  todaySlots: YasnoSlot[],
+  offGapHours: number,
+): YasnoSlot[] {
+  const onPeriods = todaySlots.filter(s => s.type === 'NotPlanned');
+  if (onPeriods.length === 0) return todaySlots; // fallback: mirror as-is
+
+  // Average on-period duration (minutes)
+  const avgOnMin = Math.round(
+    onPeriods.reduce((sum, s) => sum + (s.end - s.start), 0) / onPeriods.length,
+  );
+  const offGapMin = Math.round(offGapHours * 60);
+
+  // Last power-off today (minutes from midnight)
+  const lastOff = Math.max(...onPeriods.map(s => s.end));
+
+  // First predicted on-time for tomorrow (minutes from tomorrow's midnight)
+  let nextOn = lastOff + offGapMin - 1440;
+  if (nextOn < 0) nextOn = 0;
+
+  // Generate alternating on/off slots covering 0-1440
+  const slots: YasnoSlot[] = [];
+  let pos = 0;
+
+  while (pos < 1440) {
+    if (nextOn > pos) {
+      slots.push({ start: pos, end: Math.min(nextOn, 1440), type: 'Definite' });
+      pos = Math.min(nextOn, 1440);
+    }
+    if (pos >= 1440) break;
+    const onEnd = Math.min(pos + avgOnMin, 1440);
+    slots.push({ start: pos, end: onEnd, type: 'NotPlanned' });
+    pos = onEnd;
+    nextOn = pos + offGapMin;
+  }
+
+  return slots;
+}
+
 const defaultBatterySettings: BatterySettings = {
   capacity: 82,
   minDischarge: 10,
@@ -113,6 +157,7 @@ function App() {
   const [powerSchedule, setPowerSchedule] = useState<PowerSchedule>(defaultPowerSchedule);
   const [currentTime, setCurrentTime] = useState(() => new Date());
   const [helpOpen, setHelpOpen] = useState(false);
+  const [offGapHours, setOffGapHours] = useState(7);
   const [route, setRoute] = useState(() => window.location.hash || '#/');
 
   // Hash-based routing
@@ -149,16 +194,16 @@ function App() {
 
   const effectivePowerSchedule = useMemo<PowerSchedule>(() => {
     if (!isYasno || !yasno.groupData) return powerSchedule;
-    // When tomorrow has no data, mirror today's slots as estimate
+    // When tomorrow has no data, estimate from today's pattern + off-gap
     const tomorrowSlots = yasno.groupData.tomorrow.slots.length > 0
       ? yasno.groupData.tomorrow.slots
-      : yasno.groupData.today.slots;
+      : buildEstimatedTomorrowSlots(yasno.groupData.today.slots, offGapHours);
     return buildScheduleFromYasno(
       yasno.groupData.today.slots,
       tomorrowSlots,
       Math.floor(currentHour),
     );
-  }, [powerSchedule, isYasno, yasno.groupData, currentHour]);
+  }, [powerSchedule, isYasno, yasno.groupData, currentHour, offGapHours]);
 
   const lockedFields = useMemo<ApiLockedFields>(() => ({
     currentCharge: isDeyeLive,
@@ -341,6 +386,8 @@ function App() {
           tomorrowHasData={tomorrowHasData}
           onApply={handleApplyScenario}
           activeScenarioId={activeScenarioId}
+          offGapHours={offGapHours}
+          onOffGapChange={setOffGapHours}
         />
 
         {/* Section 5: Прогноз */}

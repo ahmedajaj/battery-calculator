@@ -11,6 +11,8 @@ interface Props {
   tomorrowHasData: boolean;
   onApply: (scenarioId: string, appliances: Appliance[]) => void;
   activeScenarioId: string | null;
+  offGapHours: number;
+  onOffGapChange: (hours: number) => void;
 }
 
 const TAG_STYLES: Record<Scenario['tag'], { bg: string; text: string; label: string }> = {
@@ -60,6 +62,8 @@ export const ScenarioPanel: React.FC<Props> = ({
   tomorrowHasData,
   onApply,
   activeScenarioId,
+  offGapHours,
+  onOffGapChange,
 }) => {
   const scenarios = useMemo(
     () => generateScenarios(battery, appliances, powerSchedule, currentHour),
@@ -150,11 +154,26 @@ export const ScenarioPanel: React.FC<Props> = ({
 
       {/* Uncertainty banner when tomorrow schedule is unknown */}
       {!tomorrowHasData && (
-        <div className="flex items-center gap-2.5 mb-5 px-3 py-2 bg-amber-50 border border-amber-200 rounded-xl text-xs">
-          <AlertTriangle className="w-3.5 h-3.5 text-amber-500 shrink-0" />
-          <span className="text-amber-700">
-            Розклад на завтра ще невідомий — сценарії розраховані за сьогоднішнім графіком
-          </span>
+        <div className="mb-5 px-3 py-3 bg-amber-50 border border-amber-200 rounded-xl text-xs space-y-2">
+          <div className="flex items-center gap-2">
+            <AlertTriangle className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+            <span className="text-amber-700">
+              Розклад на завтра ще невідомий — оцінка за паузою між увімкненнями
+            </span>
+          </div>
+          <div className="flex items-center gap-2 pl-5">
+            <label className="text-amber-700 whitespace-nowrap">Пауза між увімк.:</label>
+            <input
+              type="number"
+              min={1}
+              max={20}
+              step={0.5}
+              value={offGapHours}
+              onChange={(e) => onOffGapChange(Math.max(1, Math.min(20, parseFloat(e.target.value) || 7)))}
+              className="w-14 bg-white border border-amber-300 rounded-lg px-2 py-1 text-sm font-mono text-slate-700 text-center focus:outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400/20"
+            />
+            <span className="text-amber-600">год</span>
+          </div>
         </div>
       )}
 
