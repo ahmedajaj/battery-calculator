@@ -1,16 +1,11 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import type { BatteryMode } from '../types';
 
-const DEYE_API_URL = 'https://eu1-developer.deyecloud.com/v1.0/station/latest';
-
-/** Proxy URL — works in dev (Vite proxy) and prod (nginx proxy under base path) */
+/**
+ * Proxy URL — nginx (prod) or Vite dev server injects the Deye Bearer token
+ * server-side, so NO secret ever reaches the browser.
+ */
 const PROXY_URL = `${import.meta.env.BASE_URL}api/deye/latest`;
-
-/** CORS proxies for production — try in order until one works */
-const CORS_PROXIES = [
-  (url: string) => `https://corsproxy.io/?${encodeURIComponent(url)}`,
-  (url: string) => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
-];
 
 const STORAGE_KEY_BATTERY_MODE = 'battery-calc-battery-mode';
 
@@ -26,9 +21,9 @@ export interface UseDeyeDataReturn {
 }
 
 export function useDeyeData(pollInterval = 60_000): UseDeyeDataReturn {
-  const token = (import.meta.env.VITE_DEYE_TOKEN as string) || '';
   const stationId = (import.meta.env.VITE_DEYE_STATION_ID as string) || '61180551';
-  const tokenConfigured = token.length > 0;
+  // Token is injected server-side; we assume it's configured if station ID is set
+  const tokenConfigured = stationId.length > 0;
 
   const [mode, setModeState] = useState<BatteryMode>(() => {
     const saved = localStorage.getItem(STORAGE_KEY_BATTERY_MODE) as BatteryMode;
@@ -51,68 +46,37 @@ export function useDeyeData(pollInterval = 60_000): UseDeyeDataReturn {
   }, []);
 
   const fetchData = useCallback(async () => {
-    if (!token) {
-      setError('VITE_DEYE_TOKEN не налаштовано в .env');
-      return;
-    }
-
     try {
       setLoading(true);
-      const body = JSON.stringify({ stationId: parseInt(stationId, 10) });
-      const headers: Record<string, string> = {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`,
-      };
+      const res = await fetch(PROXY_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ stationId: parseInt(stationId, 10) }),
+        signal: AbortSignal.timeout(10_000),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const json = await res.json();
 
-      // Try nginx/Vite proxy first, then direct, then CORS proxies
-      const urls = [
-        PROXY_URL,
-        DEYE_API_URL,
-        ...CORS_PROXIES.map((p) => p(DEYE_API_URL)),
-      ];
-
-      let lastErr: Error | null = null;
-
-      for (const url of urls) {
-        try {
-          const res = await fetch(url, {
-            method: 'POST',
-            headers,
-            body,
-            signal: AbortSignal.timeout(10_000),
-          });
-          if (!res.ok) throw new Error(`HTTP ${res.status}`);
-          const json = await res.json();
-
-          // Deye API wraps data in { code, msg, data: { batterySOC, ... } }
-          const batterySOC = json?.data?.batterySOC ?? json?.batterySOC;
-          if (typeof batterySOC !== 'number' && typeof batterySOC !== 'string') {
-            throw new Error('batterySOC не знайдено у відповіді');
-          }
-
-          const socValue = typeof batterySOC === 'string' ? parseFloat(batterySOC) : batterySOC;
-          if (isNaN(socValue)) throw new Error('Невірне значення batterySOC');
-
-          setSOC(socValue);
-          setError(null);
-          setLastUpdated(new Date());
-          return; // success — stop trying
-        } catch (e: unknown) {
-          lastErr = e as Error;
-        }
+      const batterySOC = json?.data?.batterySOC ?? json?.batterySOC;
+      if (typeof batterySOC !== 'number' && typeof batterySOC !== 'string') {
+        throw new Error('batterySOC не знайдено у відповіді');
       }
 
-      // All attempts failed
-      throw lastErr ?? new Error('Не вдалося отримати дані');
+      const socValue = typeof batterySOC === 'string' ? parseFloat(batterySOC) : batterySOC;
+      if (isNaN(socValue)) throw new Error('Невірне значення batterySOC');
+
+      setSOC(socValue);
+      setError(null);
+      setLastUpdated(new Date());
     } catch (e: unknown) {
       const err = e as Error;
       setError(err.message || "Помилка з'єднання");
     } finally {
       setLoading(false);
     }
-  }, [token, stationId]);
+  }, [stationId]);
 
-  // Poll when in deye mode and token is configured
+  // Poll when in deye mode
   useEffect(() => {
     if (intervalRef.current) clearInterval(intervalRef.current);
 
