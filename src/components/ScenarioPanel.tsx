@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { Sparkles, Check, X, Battery, Clock, Zap, ZapOff } from 'lucide-react';
+import { Sparkles, Check, X, Battery, Clock, Zap, ZapOff, AlertTriangle } from 'lucide-react';
 import type { BatterySettings, Appliance, PowerSchedule } from '../types';
 import { generateScenarios, analyzeSituation, type Scenario } from '../utils/scenarios';
 
@@ -8,6 +8,7 @@ interface Props {
   appliances: Appliance[];
   powerSchedule: PowerSchedule;
   currentHour: number;
+  tomorrowHasData: boolean;
   onApply: (scenarioId: string, appliances: Appliance[]) => void;
   activeScenarioId: string | null;
 }
@@ -56,6 +57,7 @@ export const ScenarioPanel: React.FC<Props> = ({
   appliances,
   powerSchedule,
   currentHour,
+  tomorrowHasData,
   onApply,
   activeScenarioId,
 }) => {
@@ -146,6 +148,16 @@ export const ScenarioPanel: React.FC<Props> = ({
         )}
       </div>
 
+      {/* Uncertainty banner when tomorrow schedule is unknown */}
+      {!tomorrowHasData && (
+        <div className="flex items-center gap-2.5 mb-5 px-3 py-2 bg-amber-50 border border-amber-200 rounded-xl text-xs">
+          <AlertTriangle className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+          <span className="text-amber-700">
+            Розклад на завтра ще невідомий — сценарії розраховані за сьогоднішнім графіком
+          </span>
+        </div>
+      )}
+
       {/* Scenario cards grouped by tag */}
       {TAG_ORDER.map(tagKey => {
         const group = grouped[tagKey];
@@ -212,7 +224,14 @@ export const ScenarioPanel: React.FC<Props> = ({
                           : <><X className="w-3 h-3" /> Не вистачить</>}
                       </span>
                       <span className="text-slate-300">•</span>
-                      <BatteryPictogram level={scenario.minBatteryLevel} />
+                      {scenario.feasible ? (
+                        <BatteryPictogram level={scenario.minBatteryLevel} />
+                      ) : (
+                        <span className="flex items-center gap-1 text-red-400">
+                          <Clock className="w-3 h-3" />
+                          о {scenario.minBatteryTime}:00
+                        </span>
+                      )}
                     </div>
                   </button>
                 );

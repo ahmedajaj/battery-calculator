@@ -45,14 +45,17 @@ export const BatteryChart: React.FC<Props> = ({ timelineData, battery, powerSche
   const uncertaintyEnd = !tomorrowHasData && midnightLabel ? chartData[chartData.length - 1]?.timeLabel : null;
 
   // Collect power schedule boundary reference lines
-  const powerRefLines: { label: string; color: string; text: string }[] = [];
+  // When tomorrow has no data, periods in the tomorrow zone (hour < startHour) are estimated
+  const powerRefLines: { label: string; color: string; text: string; estimated: boolean }[] = [];
   for (const period of powerSchedule.periods) {
     const onHour = Math.round(period.start) % 24;
     const offHour = Math.round(period.end) % 24;
     const onLabel = chartData.find(d => d.time === onHour)?.timeLabel;
     const offLabel = chartData.find(d => d.time === offHour)?.timeLabel;
-    if (onLabel) powerRefLines.push({ label: onLabel, color: '#22c55e', text: '⚡ Увімк' });
-    if (offLabel) powerRefLines.push({ label: offLabel, color: '#ef4444', text: '❌ Вимк' });
+    const onEstimated = !tomorrowHasData && onHour < startHour;
+    const offEstimated = !tomorrowHasData && offHour < startHour;
+    if (onLabel) powerRefLines.push({ label: onLabel, color: onEstimated ? '#d97706' : '#22c55e', text: onEstimated ? '⚡ Увімк (оцінка)' : '⚡ Увімк', estimated: onEstimated });
+    if (offLabel) powerRefLines.push({ label: offLabel, color: offEstimated ? '#d97706' : '#ef4444', text: offEstimated ? '❌ Вимк (оцінка)' : '❌ Вимк', estimated: offEstimated });
   }
   void currentHour; // used for reactivity
 
@@ -208,7 +211,8 @@ export const BatteryChart: React.FC<Props> = ({ timelineData, battery, powerSche
                 yAxisId="battery"
                 x={line.label}
                 stroke={line.color}
-                strokeWidth={2}
+                strokeWidth={line.estimated ? 1.5 : 2}
+                strokeDasharray={line.estimated ? '6 3' : undefined}
                 label={{
                   value: line.text,
                   fill: line.color,
@@ -258,6 +262,12 @@ export const BatteryChart: React.FC<Props> = ({ timelineData, battery, powerSche
           <div className="w-4 h-4 border-l-2 border-dashed border-indigo-500" />
           <span className="text-slate-600">Північ</span>
         </div>
+        {powerRefLines.some(l => l.estimated) && (
+          <div className="flex items-center gap-2">
+            <div className="w-4 h-4 border-l-2 border-dashed border-amber-600" />
+            <span className="text-slate-600">Оцінка</span>
+          </div>
+        )}
       </div>
 
       {/* Data table (collapsible) */}

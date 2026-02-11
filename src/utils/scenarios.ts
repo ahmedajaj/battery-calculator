@@ -12,6 +12,7 @@ export interface Scenario {
   appliances: Appliance[];
   feasible: boolean;
   minBatteryLevel: number;
+  minBatteryTime: number; // hour (0-23) when battery hits minimum
   energyUsedKwh: number;
 }
 
@@ -56,9 +57,16 @@ function simulate(
   appliances: Appliance[],
   powerSchedule: PowerSchedule,
   currentHour: number,
-): { feasible: boolean; minLevel: number; energyUsed: number } {
+): { feasible: boolean; minLevel: number; minTime: number; energyUsed: number } {
   const result = calculateBatteryStatus(battery, appliances, powerSchedule, currentHour);
-  const minLevel = Math.min(...result.timelineData.map(p => p.batteryLevel));
+  let minLevel = Infinity;
+  let minTime = 0;
+  for (const p of result.timelineData) {
+    if (p.batteryLevel < minLevel) {
+      minLevel = p.batteryLevel;
+      minTime = p.time;
+    }
+  }
   // Each timeline point covers 1 hour; consumption is kW, so sum = kWh
   const energyUsed = result.timelineData
     .filter(p => !p.charging)
@@ -66,6 +74,7 @@ function simulate(
   return {
     feasible: result.canSurviveOutage,
     minLevel: Math.round(minLevel * 10) / 10,
+    minTime,
     energyUsed: Math.round(energyUsed * 10) / 10,
   };
 }
@@ -182,6 +191,7 @@ export function generateScenarios(
       appliances,
       feasible: sim.feasible,
       minBatteryLevel: sim.minLevel,
+      minBatteryTime: sim.minTime,
       energyUsedKwh: sim.energyUsed,
     });
   };

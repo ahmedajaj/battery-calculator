@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect, useCallback } from 'react';
-import { Battery, Zap } from 'lucide-react';
+import { Battery, Zap, HelpCircle, ChevronDown } from 'lucide-react';
 import {
   BatterySettingsPanel,
   ApplianceControls,
@@ -9,6 +9,7 @@ import {
   FormulaSection,
   DataModePanel,
   ScenarioPanel,
+  ResidentStatusPage,
 } from './components';
 import type { BatterySettings, Appliance, PowerSchedule, ApiLockedFields, TimeRange, YasnoSlot } from './types';
 import { calculateBatteryStatus } from './utils/calculations';
@@ -111,6 +112,15 @@ function App() {
   const [activeScenarioId, setActiveScenarioId] = useState<string | null>(null);
   const [powerSchedule, setPowerSchedule] = useState<PowerSchedule>(defaultPowerSchedule);
   const [currentTime, setCurrentTime] = useState(() => new Date());
+  const [helpOpen, setHelpOpen] = useState(false);
+  const [route, setRoute] = useState(() => window.location.hash || '#/');
+
+  // Hash-based routing
+  useEffect(() => {
+    const onHash = () => setRoute(window.location.hash || '#/');
+    window.addEventListener('hashchange', onHash);
+    return () => window.removeEventListener('hashchange', onHash);
+  }, []);
 
   // Yasno data source
   const yasno = useYasnoData(60_000);
@@ -139,9 +149,13 @@ function App() {
 
   const effectivePowerSchedule = useMemo<PowerSchedule>(() => {
     if (!isYasno || !yasno.groupData) return powerSchedule;
+    // When tomorrow has no data, mirror today's slots as estimate
+    const tomorrowSlots = yasno.groupData.tomorrow.slots.length > 0
+      ? yasno.groupData.tomorrow.slots
+      : yasno.groupData.today.slots;
     return buildScheduleFromYasno(
       yasno.groupData.today.slots,
-      yasno.groupData.tomorrow.slots,
+      tomorrowSlots,
       Math.floor(currentHour),
     );
   }, [powerSchedule, isYasno, yasno.groupData, currentHour]);
@@ -174,6 +188,35 @@ function App() {
     setActiveScenarioId(scenarioId);
   }, []);
 
+  // Full today power-on periods (including already passed) for resident status display
+  const todayFullPeriods = useMemo<TimeRange[]>(() => {
+    if (!isYasno || !yasno.groupData) return powerSchedule.periods;
+    const periods: TimeRange[] = [];
+    for (const slot of yasno.groupData.today.slots) {
+      if (slot.type !== 'NotPlanned') continue;
+      const s = slot.start / 60;
+      const e = slot.end / 60;
+      if (s < e) periods.push({ start: s, end: e });
+    }
+    return periods;
+  }, [isYasno, yasno.groupData, powerSchedule.periods]);
+
+  // ── Route: /status — simplified resident view ──
+  if (route === '#/status') {
+    return (
+      <ResidentStatusPage
+        timelineData={calculationResult.timelineData}
+        battery={effectiveBatterySettings}
+        appliances={appliances}
+        powerSchedule={effectivePowerSchedule}
+        todayFullPeriods={todayFullPeriods}
+        currentTime={currentTime}
+        tomorrowHasData={tomorrowHasData}
+      />
+    );
+  }
+
+  // ── Route: / — full calculator ──
   return (
     <div className="min-h-screen w-full px-4 py-6 md:px-6 md:py-8 lg:px-8 lg:py-10">
       <div className="w-full max-w-6xl" style={{ margin: '0 auto' }}>
@@ -194,6 +237,37 @@ function App() {
             </div>
           </div>
         </header>
+
+        {/* Collapsible instructions */}
+        <div className="mb-5 md:mb-8">
+          <button
+            onClick={() => setHelpOpen(!helpOpen)}
+            className="w-full flex items-center gap-2 py-2.5 px-4 bg-slate-50 hover:bg-slate-100 rounded-xl border border-slate-200 text-sm font-medium text-slate-500 transition-colors"
+          >
+            <HelpCircle className="w-4 h-4" />
+            Як користуватися
+            <ChevronDown className={`w-4 h-4 ml-auto transition-transform duration-200 ${helpOpen ? 'rotate-180' : ''}`} />
+          </button>
+          {helpOpen && (
+            <div className="mt-2 bg-white rounded-xl border border-slate-200 p-4 sm:p-5 text-sm text-slate-600 space-y-3">
+              <p className="font-semibold text-slate-700">Режим роботи (верхня панель)</p>
+              <ul className="list-disc ml-5 space-y-1">
+                <li><b>Авто (Yasno + Deye)</b> — графік відключень і заряд батареї підтягуються автоматично. Нічого заповнювати не потрібно.</li>
+                <li><b>Ручний</b> — введіть параметри батареї та розклад електрики самостійно (див. нижче).</li>
+              </ul>
+              <p className="font-semibold text-slate-700 pt-1">Розділи</p>
+              <ul className="list-none ml-1 space-y-1.5">
+                <li><span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-blue-100 text-blue-700 text-xs font-bold mr-1.5">1</span><b>Статус</b> — поточний стан: заряд, автономність, потужність.</li>
+                <li><span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-blue-100 text-blue-700 text-xs font-bold mr-1.5">2</span><b>Параметри батареї</b> — ємність, поточний заряд, ліміти, потужність зарядки. <span className="text-amber-600">⟵ заповніть у ручному режимі</span></li>
+                <li><span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-blue-100 text-blue-700 text-xs font-bold mr-1.5">3</span><b>Прилади</b> — увімкніть потрібні, вкажіть потужність кожного.</li>
+                <li><span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-blue-100 text-blue-700 text-xs font-bold mr-1.5">4</span><b>Розклад</b> — таймлайн: коли працюють прилади і коли є електрика. <span className="text-amber-600">⟵ перетягніть блоки в ручному режимі</span></li>
+                <li><span className="inline-flex items-center justify-center w-5 h-5 rounded bg-purple-100 text-purple-700 text-xs font-bold mr-1.5">AI</span><b>Сценарії</b> — розумні підказки, які розклади обрати. Натисніть «Застосувати» щоб автоматично налаштувати прилади.</li>
+                <li><span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-blue-100 text-blue-700 text-xs font-bold mr-1.5">5</span><b>Графік</b> — прогноз заряду на 24 год. Штрихові лінії кольору бурштину — оцінка (дані на завтра ще не опубліковані).</li>
+                <li><span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-blue-100 text-blue-700 text-xs font-bold mr-1.5">6</span><b>Довідка</b> — формули розрахунків.</li>
+              </ul>
+            </div>
+          )}
+        </div>
 
         {/* Main content */}
         <main className="space-y-6 md:space-y-10">
@@ -262,6 +336,7 @@ function App() {
           appliances={appliances}
           powerSchedule={effectivePowerSchedule}
           currentHour={currentHour}
+          tomorrowHasData={tomorrowHasData}
           onApply={handleApplyScenario}
           activeScenarioId={activeScenarioId}
         />
