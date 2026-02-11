@@ -1,5 +1,5 @@
 import React from 'react';
-import { Battery, Droplets, Flame, Building2, Lightbulb, Zap, ZapOff, Wifi } from 'lucide-react';
+import { Battery, Droplets, Flame, Building2, Lightbulb, Zap, ZapOff, Wifi, ArrowUp, ArrowDown, AlertTriangle, Minus } from 'lucide-react';
 import type { TimelinePoint, BatterySettings, Appliance, PowerSchedule } from '../types';
 import { getChargeColor } from '../utils/calculations';
 
@@ -11,6 +11,8 @@ interface Props {
   todayFullPeriods: { start: number; end: number }[];
   currentTime: Date;
   tomorrowHasData?: boolean;
+  deyeTimestamp?: Date | null;
+  batteryPower?: number | null;
 }
 
 /** Icon components for each appliance id */
@@ -46,9 +48,22 @@ const fmtH = (h: number) => {
   return `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
 };
 
-export const ResidentStatusPage: React.FC<Props> = ({ timelineData, battery, appliances, powerSchedule, todayFullPeriods, currentTime, tomorrowHasData = true }) => {
+export const ResidentStatusPage: React.FC<Props> = ({ timelineData, battery, appliances, powerSchedule, todayFullPeriods, currentTime, tomorrowHasData = true, deyeTimestamp, batteryPower }) => {
   const currentHour = currentTime.getHours();
   const levelColor = getChargeColor(battery.currentCharge);
+
+  // Charging state from Deye inverter
+  const chargeState: 'charging' | 'discharging' | 'idle' | 'unknown' =
+    batteryPower == null ? 'unknown'
+    : batteryPower < -50 ? 'charging'
+    : batteryPower > 50 ? 'discharging'
+    : 'idle';
+
+  // Stale data detection (>30 min)
+  const isStale = deyeTimestamp != null && (currentTime.getTime() - deyeTimestamp.getTime()) > 30 * 60 * 1000;
+  const dataTimeStr = deyeTimestamp
+    ? deyeTimestamp.toLocaleTimeString('uk-UA', { hour: '2-digit', minute: '2-digit' })
+    : null;
 
   // Midnight boundary for day delimiter & estimated detection
   const startHour = Math.floor(currentHour);
@@ -82,8 +97,7 @@ export const ResidentStatusPage: React.FC<Props> = ({ timelineData, battery, app
           <h1 className="text-xl font-bold text-slate-800 mb-1">Стан батарей Русової 7А</h1>
           <p className="text-sm text-slate-400">
             {currentTime.toLocaleDateString('uk-UA', { weekday: 'long', day: 'numeric', month: 'long' })}
-            {' · '}
-            {currentTime.toLocaleTimeString('uk-UA', { hour: '2-digit', minute: '2-digit' })}
+            {dataTimeStr ? ` · дані о ${dataTimeStr}` : ` · ${currentTime.toLocaleTimeString('uk-UA', { hour: '2-digit', minute: '2-digit' })}`}
           </p>
         </header>
 
@@ -101,11 +115,35 @@ export const ResidentStatusPage: React.FC<Props> = ({ timelineData, battery, app
                 </p>
               </div>
             </div>
-            <span className="inline-flex items-center gap-1.5 text-[10px] font-semibold bg-green-50 text-green-600 px-2.5 py-1 rounded-full border border-green-200">
-              <Wifi className="w-3 h-3" />
-              LIVE
-            </span>
+            {isStale ? (
+              <span className="inline-flex items-center gap-1.5 text-[10px] font-semibold bg-red-50 text-red-500 px-2.5 py-1 rounded-full border border-red-200">
+                <AlertTriangle className="w-3 h-3" />
+                OFFLINE
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1.5 text-[10px] font-semibold bg-green-50 text-green-600 px-2.5 py-1 rounded-full border border-green-200">
+                <Wifi className="w-3 h-3" />
+                LIVE
+              </span>
+            )}
           </div>
+
+          {/* Charging state */}
+          {chargeState !== 'unknown' && (
+            <div className={`flex items-center gap-2 mb-3 text-sm font-medium ${
+              chargeState === 'charging' ? 'text-green-600' : chargeState === 'discharging' ? 'text-amber-600' : 'text-slate-400'
+            }`}>
+              {chargeState === 'charging' && <ArrowUp className="w-4 h-4" />}
+              {chargeState === 'discharging' && <ArrowDown className="w-4 h-4" />}
+              {chargeState === 'idle' && <Minus className="w-4 h-4" />}
+              <span>
+                {chargeState === 'charging' ? 'Заряджається'
+                  : chargeState === 'discharging' ? 'Розряджається'
+                  : 'Очікування'}
+              </span>
+            </div>
+          )}
+
           <div className="w-full h-4 bg-slate-100 rounded-full overflow-hidden">
             <div
               className="h-full rounded-full transition-all duration-700"
@@ -115,6 +153,14 @@ export const ResidentStatusPage: React.FC<Props> = ({ timelineData, battery, app
               }}
             />
           </div>
+
+          {/* Stale data warning */}
+          {isStale && (
+            <div className="mt-3 flex items-center gap-2 bg-red-50 text-red-600 text-xs font-medium px-3 py-2 rounded-lg border border-red-200">
+              <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />
+              <span>Інвертор не оновлювався понад 30 хв — дані можуть бути неактуальні</span>
+            </div>
+          )}
         </div>
 
         {/* Today / Tomorrow status cards */}
@@ -168,10 +214,10 @@ export const ResidentStatusPage: React.FC<Props> = ({ timelineData, battery, app
 
         {/* Explanation for residents */}
         <div className="bg-slate-100/70 rounded-xl px-4 py-3 mb-4 text-xs text-slate-500 space-y-1">
-          <p>📋 <b className="text-slate-600">Таблиця нижче</b> — це <b>прогноз</b> роботи обладнання на найближчі 24 години з поточної години.</p>
+          <p>📋 <b className="text-slate-600">Таблиця нижче</b> — це <b>прогноз</b> роботи обладнання {tomorrowHasData ? 'на найближчі 24 години' : 'до кінця доби'}.</p>
           <p>🔋 Рівень батареї оновлюється в реальному часі з інвертора.</p>
           {!tomorrowHasData && (
-            <p>⚠️ Графік на завтра ще не опубліковано ДТЕК — після півночі показано <b>орієнтовний</b> розклад (за сьогоднішнім шаблоном).</p>
+            <p>⚠️ Графік на завтра ще не опубліковано ДТЕК — таблиця показує прогноз лише до 00:00.</p>
           )}
         </div>
 
@@ -209,7 +255,7 @@ export const ResidentStatusPage: React.FC<Props> = ({ timelineData, battery, app
               </tr>
             </thead>
             <tbody>
-              {timelineData.map((point, i) => {
+              {((!tomorrowHasData && midnightIndex > 0) ? timelineData.slice(0, midnightIndex) : timelineData).map((point, i) => {
                 const isNow = i === 0;
                 const isMidnight = i > 0 && point.time === 0;
                 const isEstimated = !tomorrowHasData && midnightIndex > 0 && i >= midnightIndex;

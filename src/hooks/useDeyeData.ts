@@ -13,6 +13,10 @@ export interface UseDeyeDataReturn {
   mode: BatteryMode;
   setMode: (mode: BatteryMode) => void;
   soc: number | null;
+  /** Battery power in watts: negative = charging, positive = discharging, 0 = idle */
+  batteryPower: number | null;
+  /** Timestamp from the Deye inverter (when the data was recorded) */
+  deyeTimestamp: Date | null;
   loading: boolean;
   error: string | null;
   lastUpdated: Date | null;
@@ -32,6 +36,8 @@ export function useDeyeData(pollInterval = 60_000): UseDeyeDataReturn {
   });
 
   const [soc, setSOC] = useState<number | null>(null);
+  const [batteryPower, setBatteryPower] = useState<number | null>(null);
+  const [deyeTimestamp, setDeyeTimestamp] = useState<Date | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
@@ -65,7 +71,17 @@ export function useDeyeData(pollInterval = 60_000): UseDeyeDataReturn {
       const socValue = typeof batterySOC === 'string' ? parseFloat(batterySOC) : batterySOC;
       if (isNaN(socValue)) throw new Error('Невірне значення batterySOC');
 
+      // Battery power (watts): negative = charging, positive = discharging
+      const rawPower = json?.data?.batteryPower ?? json?.batteryPower ?? null;
+      const powerValue = rawPower !== null ? (typeof rawPower === 'string' ? parseFloat(rawPower) : rawPower) : null;
+
+      // Inverter timestamp (Unix seconds)
+      const rawTime = json?.data?.lastUpdateTime ?? json?.lastUpdateTime ?? null;
+      const tsValue = rawTime !== null ? new Date((typeof rawTime === 'string' ? parseFloat(rawTime) : rawTime) * 1000) : null;
+
       setSOC(socValue);
+      setBatteryPower(typeof powerValue === 'number' && !isNaN(powerValue) ? powerValue : null);
+      setDeyeTimestamp(tsValue);
       setError(null);
       setLastUpdated(new Date());
     } catch (e: unknown) {
@@ -94,6 +110,8 @@ export function useDeyeData(pollInterval = 60_000): UseDeyeDataReturn {
     mode,
     setMode,
     soc,
+    batteryPower,
+    deyeTimestamp,
     loading,
     error,
     lastUpdated,

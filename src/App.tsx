@@ -212,6 +212,8 @@ function App() {
         todayFullPeriods={todayFullPeriods}
         currentTime={currentTime}
         tomorrowHasData={tomorrowHasData}
+        deyeTimestamp={deye.deyeTimestamp}
+        batteryPower={deye.batteryPower}
       />
     );
   }
