@@ -123,7 +123,7 @@ export const DataModePanel: React.FC<Props> = ({
   const headerTitle = (() => {
     const parts: string[] = [];
     if (isDeye) parts.push('Deye');
-    if (isYasno) parts.push(`Yasno · Гр.${group}`);
+    if (isYasno) parts.push(`ДТЕК · Гр.${group}`);
     if (parts.length === 0) return 'Ручний режим';
     return parts.join(' + ');
   })();
@@ -134,7 +134,7 @@ export const DataModePanel: React.FC<Props> = ({
     if (deyeConnected && batterySOC !== null) parts.push(`🔋 ${batterySOC}%`);
     if (yasnoConnected) parts.push(`Оновлено: ${fmtTime(scheduleLastUpdated)}`);
     if (isDeye && batteryError) parts.push('⚠️ Deye');
-    if (isYasno && scheduleError) parts.push('⚠️ Yasno');
+    if (isYasno && scheduleError) parts.push('⚠️ ДТЕК');
     return parts.join(' · ') || 'Підключення...';
   })();
 
@@ -296,7 +296,7 @@ export const DataModePanel: React.FC<Props> = ({
                     : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
                 }`}
               >
-                ⚡ Yasno
+                ⚡ ДТЕК
               </button>
               <button
                 onClick={() => onScheduleModeChange('manual')}

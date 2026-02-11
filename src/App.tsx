@@ -252,7 +252,7 @@ function App() {
             <div className="mt-2 bg-white rounded-xl border border-slate-200 p-4 sm:p-5 text-sm text-slate-600 space-y-3">
               <p className="font-semibold text-slate-700">Режим роботи (верхня панель)</p>
               <ul className="list-disc ml-5 space-y-1">
-                <li><b>Авто (Yasno + Deye)</b> — графік відключень і заряд батареї підтягуються автоматично. Нічого заповнювати не потрібно.</li>
+                <li><b>Авто (ДТЕК + Deye)</b> — графік відключень і заряд батареї підтягуються автоматично. Нічого заповнювати не потрібно.</li>
                 <li><b>Ручний</b> — введіть параметри батареї та розклад електрики самостійно (див. нижче).</li>
               </ul>
               <p className="font-semibold text-slate-700 pt-1">Розділи</p>

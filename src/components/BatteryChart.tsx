@@ -310,7 +310,7 @@ export const BatteryChart: React.FC<Props> = ({ timelineData, battery, powerSche
                           <td colSpan={5} className="px-3 py-1.5 text-center">
                             <span className="text-[11px] font-semibold text-indigo-600">🌙 Нова доба — 00:00</span>
                             {!tomorrowHasData && (
-                              <span className="ml-2 text-[10px] text-amber-600 font-medium">⚠ Немає даних Yasno</span>
+                              <span className="ml-2 text-[10px] text-amber-600 font-medium">⚠ Немає даних ДТЕК</span>
                             )}
                           </td>
                         </tr>
