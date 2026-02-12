@@ -12,7 +12,7 @@ import {
   ResidentStatusPage,
 } from './components';
 import type { BatterySettings, Appliance, PowerSchedule, ApiLockedFields, TimeRange, YasnoSlot } from './types';
-import { calculateBatteryStatus } from './utils/calculations';
+import { calculateBatteryStatus, generateExtendedTimeline } from './utils/calculations';
 import { useYasnoData } from './hooks/useYasnoData';
 import { useDeyeData } from './hooks/useDeyeData';
 
@@ -246,15 +246,43 @@ function App() {
     return periods;
   }, [isYasno, yasno.groupData, powerSchedule.periods]);
 
+  // Full tomorrow power-on periods for resident status display
+  const tomorrowFullPeriods = useMemo<TimeRange[]>(() => {
+    if (!isYasno || !yasno.groupData || yasno.groupData.tomorrow.slots.length === 0) return [];
+    const periods: TimeRange[] = [];
+    for (const slot of yasno.groupData.tomorrow.slots) {
+      if (slot.type !== 'NotPlanned') continue;
+      const s = slot.start / 60;
+      const e = slot.end / 60;
+      if (s < e) periods.push({ start: s, end: e });
+    }
+    return periods;
+  }, [isYasno, yasno.groupData]);
+
+  // Extended timeline for status page: until end of tomorrow when schedule is available
+  const statusTimelineData = useMemo(() => {
+    if (tomorrowHasData) {
+      return generateExtendedTimeline(
+        effectiveBatterySettings,
+        appliances,
+        todayFullPeriods,
+        tomorrowFullPeriods,
+        currentHour,
+      );
+    }
+    return calculationResult.timelineData;
+  }, [tomorrowHasData, effectiveBatterySettings, appliances, todayFullPeriods, tomorrowFullPeriods, currentHour, calculationResult.timelineData]);
+
   // ── Route: /status — simplified resident view ──
   if (route === '#/status') {
     return (
       <ResidentStatusPage
-        timelineData={calculationResult.timelineData}
+        timelineData={statusTimelineData}
         battery={effectiveBatterySettings}
         appliances={appliances}
         powerSchedule={effectivePowerSchedule}
         todayFullPeriods={todayFullPeriods}
+        tomorrowFullPeriods={tomorrowFullPeriods}
         currentTime={currentTime}
         tomorrowHasData={tomorrowHasData}
         deyeTimestamp={deye.deyeTimestamp}

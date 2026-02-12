@@ -9,6 +9,7 @@ interface Props {
   appliances: Appliance[];
   powerSchedule: PowerSchedule;
   todayFullPeriods: { start: number; end: number }[];
+  tomorrowFullPeriods?: { start: number; end: number }[];
   currentTime: Date;
   tomorrowHasData?: boolean;
   deyeTimestamp?: Date | null;
@@ -48,7 +49,7 @@ const fmtH = (h: number) => {
   return `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
 };
 
-export const ResidentStatusPage: React.FC<Props> = ({ timelineData, battery, appliances, powerSchedule, todayFullPeriods, currentTime, tomorrowHasData = true, deyeTimestamp, batteryPower }) => {
+export const ResidentStatusPage: React.FC<Props> = ({ timelineData, battery, appliances, powerSchedule, todayFullPeriods, tomorrowFullPeriods = [], currentTime, tomorrowHasData = true, deyeTimestamp, batteryPower }) => {
   const currentHour = currentTime.getHours();
   const levelColor = getChargeColor(battery.currentCharge);
 
@@ -69,11 +70,8 @@ export const ResidentStatusPage: React.FC<Props> = ({ timelineData, battery, app
   const startHour = Math.floor(currentHour);
   const midnightIndex = startHour > 0 ? 24 - startHour : 0;
 
-  // Tomorrow periods from the merged schedule (hours < startHour)
-  const tomorrowPeriods = powerSchedule.periods
-    .filter(p => p.start < startHour)
-    .map(p => ({ start: Math.max(p.start, 0), end: Math.min(p.end, startHour) }))
-    .filter(p => p.start < p.end);
+  // Tomorrow full-day periods passed from parent
+  const tomorrowPeriods = tomorrowFullPeriods;
 
   // Build the list of appliance IDs we want to track (only enabled ones)
   const trackedAppliances = appliances.filter(a => a.enabled);
@@ -214,7 +212,7 @@ export const ResidentStatusPage: React.FC<Props> = ({ timelineData, battery, app
 
         {/* Explanation for residents */}
         <div className="bg-slate-100/70 rounded-xl px-4 py-3 mb-4 text-xs text-slate-500 space-y-1">
-          <p>📋 <b className="text-slate-600">Таблиця нижче</b> — це <b>прогноз</b> роботи обладнання {tomorrowHasData ? 'на найближчі 24 години' : 'до кінця доби'}.</p>
+          <p>📋 <b className="text-slate-600">Таблиця нижче</b> — це <b>прогноз</b> роботи обладнання {tomorrowHasData ? 'до кінця завтрашнього дня' : 'до кінця доби'}.</p>
           <p>🔋 Рівень батареї оновлюється в реальному часі з інвертора.</p>
           {!tomorrowHasData && (
             <p>⚠️ Графік на завтра ще не опубліковано ДТЕК — таблиця показує прогноз лише до 00:00.</p>

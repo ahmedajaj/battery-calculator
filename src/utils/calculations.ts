@@ -110,6 +110,56 @@ function generateTimeline(
   return points;
 }
 
+/**
+ * Generate an extended timeline from the current hour until end of tomorrow.
+ * Uses separate power period arrays for today and tomorrow so that same-hour
+ * values in different days resolve to the correct on/off state.
+ */
+export function generateExtendedTimeline(
+  battery: BatterySettings,
+  appliances: Appliance[],
+  todayPowerPeriods: TimeRange[],
+  tomorrowPowerPeriods: TimeRange[],
+  currentHour: number,
+): TimelinePoint[] {
+  const points: TimelinePoint[] = [];
+  let batteryLevel = battery.currentCharge;
+  const startHour = Math.floor(currentHour);
+  // Remaining hours today + full 24 hours tomorrow
+  const hoursToGenerate = (24 - startHour) + 24;
+
+  for (let i = 0; i < hoursToGenerate; i++) {
+    const hour = (startHour + i) % 24;
+    const isToday = (startHour + i) < 24;
+    const periods = isToday ? todayPowerPeriods : tomorrowPowerPeriods;
+    const isPowerOn = isPowerAvailable(hour, periods);
+
+    const activeAppliances = appliances.filter(a =>
+      a.enabled && isApplianceActive(a, hour)
+    );
+    const applianceConsumption = activeAppliances.reduce((sum, a) => sum + a.power, 0);
+    const batteryConsumption = isPowerOn ? 0 : applianceConsumption;
+
+    points.push({
+      time: hour,
+      batteryLevel: Math.round(batteryLevel * 10) / 10,
+      consumption: batteryConsumption,
+      charging: isPowerOn,
+      appliances: activeAppliances.map(a => a.nameUa),
+    });
+
+    if (isPowerOn) {
+      const chargeRate = (battery.chargingPower / battery.capacity) * 100;
+      batteryLevel = Math.min(battery.maxCharge, batteryLevel + chargeRate);
+    } else {
+      const dischargeRate = (batteryConsumption / battery.capacity) * 100;
+      batteryLevel = Math.max(battery.minDischarge, batteryLevel - dischargeRate);
+    }
+  }
+
+  return points;
+}
+
 function isPowerAvailable(hour: number, periods: TimeRange[]): boolean {
   if (periods.length === 0) return false;
   return periods.some(period => {
