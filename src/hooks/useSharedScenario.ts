@@ -3,6 +3,12 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 const SCENARIO_URL = `${import.meta.env.BASE_URL}data/scenario.json`;
 const STORAGE_KEY_PIN = 'battery-calc-pin';
 
+/**
+ * Admin PIN for publishing. Checked in the browser (not a real security boundary —
+ * it's visible in the bundle). Set VITE_SCENARIO_PIN in .env before building.
+ */
+const ADMIN_PIN = (import.meta.env.VITE_SCENARIO_PIN as string | undefined) || '1234';
+
 /** UTF-8 safe base64 (plain btoa() throws on non-Latin1 characters) */
 const toBase64 = (text: string) => btoa(String.fromCharCode(...new TextEncoder().encode(text)));
 
@@ -83,6 +89,10 @@ export function useSharedScenario(pollInterval = 60_000): UseSharedScenarioRetur
 
   const save = useCallback(async (scenario: SharedScenario): Promise<SaveResult> => {
     setAuthError(false);
+    if (pin !== ADMIN_PIN) {
+      setAuthError(true);
+      return { ok: false, reason: 'auth' };
+    }
     try {
       const res = await fetch(SCENARIO_URL, {
         method: 'PUT',

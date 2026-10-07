@@ -58,7 +58,7 @@ function scenarioDevPlugin(scenarioPin: string): Plugin {
 export default defineConfig(({ mode }) => {
   // Load all env vars (including non-VITE_ ones) for server-side proxy use
   const env = loadEnv(mode, process.cwd(), '');
-  const scenarioPin = env.SCENARIO_PIN || '1234';
+  const scenarioPin = env.VITE_SCENARIO_PIN || '1234';
 
   return {
     base: '/battery-calculator/',
