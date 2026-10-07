@@ -3,6 +3,9 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 const SCENARIO_URL = `${import.meta.env.BASE_URL}data/scenario.json`;
 const STORAGE_KEY_PIN = 'battery-calc-pin';
 
+/** UTF-8 safe base64 (plain btoa() throws on non-Latin1 characters) */
+const toBase64 = (text: string) => btoa(String.fromCharCode(...new TextEncoder().encode(text)));
+
 export interface SharedScenario {
   scenarioId: string | null;
   scenarioName: string | null;
@@ -10,6 +13,13 @@ export interface SharedScenario {
   scenarioDescription: string | null;
   updatedAt: string | null;
 }
+
+/** Outcome of a publish attempt, so the UI can tell the admin what happened */
+export type SaveResult =
+  | { ok: true }
+  | { ok: false; reason: 'auth' }
+  | { ok: false; reason: 'http'; status: number }
+  | { ok: false; reason: 'network'; message: string };
 
 export interface UseSharedScenarioReturn {
   /** Currently published scenario (fetched from server) */
@@ -19,7 +29,7 @@ export interface UseSharedScenarioReturn {
   /** Last fetch error */
   error: string | null;
   /** Save a scenario to the server (requires PIN) */
-  save: (scenario: SharedScenario) => Promise<boolean>;
+  save: (scenario: SharedScenario) => Promise<SaveResult>;
   /** Re-fetch the shared scenario */
   refetch: () => void;
   /** The stored admin PIN (persisted in localStorage) */
@@ -71,34 +81,35 @@ export function useSharedScenario(pollInterval = 60_000): UseSharedScenarioRetur
     };
   }, [fetchScenario, pollInterval]);
 
-  const save = useCallback(async (scenario: SharedScenario): Promise<boolean> => {
+  const save = useCallback(async (scenario: SharedScenario): Promise<SaveResult> => {
     setAuthError(false);
     try {
       const res = await fetch(SCENARIO_URL, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': 'Basic ' + btoa(`admin:${pin}`),
+          'Authorization': 'Basic ' + toBase64(`admin:${pin}`),
         },
         body: JSON.stringify(scenario),
+        signal: AbortSignal.timeout(10_000),
       });
 
       if (res.status === 401) {
         setAuthError(true);
-        return false;
+        return { ok: false, reason: 'auth' };
       }
       if (!res.ok) {
         setError(`Save failed: HTTP ${res.status}`);
-        return false;
+        return { ok: false, reason: 'http', status: res.status };
       }
 
       setShared(scenario);
       setError(null);
-      return true;
+      return { ok: true };
     } catch (e: unknown) {
       const err = e as Error;
       setError(err.message || 'Failed to save scenario');
-      return false;
+      return { ok: false, reason: 'network', message: err.message || 'Network error' };
     }
   }, [pin]);
 

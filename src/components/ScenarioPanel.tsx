@@ -1,7 +1,8 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import { Sparkles, Check, X, Battery, Clock, Zap, ZapOff, AlertTriangle, Share2, Sofa, Scale, Building2, ThermometerSnowflake, Droplets, Moon, BatteryLow, Flame, TriangleAlert, Lightbulb, type LucideIcon } from 'lucide-react';
 import type { BatterySettings, Appliance, PowerSchedule } from '../types';
 import { generateScenarios, analyzeSituation, type Scenario } from '../utils/scenarios';
+import type { SaveResult } from '../hooks/useSharedScenario';
 
 interface Props {
   battery: BatterySettings;
@@ -14,7 +15,7 @@ interface Props {
   offGapHours: number;
   onOffGapChange: (hours: number) => void;
   /** Publish the given scenario to shared storage for residents */
-  onPublish?: (scenario: Scenario) => Promise<void>;
+  onPublish?: (scenario: Scenario) => Promise<SaveResult>;
   /** Currently published scenario id */
   publishedScenarioId?: string | null;
   /** Timestamp of last publish */
@@ -84,6 +85,9 @@ export const ScenarioPanel: React.FC<Props> = ({
   authError = false,
 }) => {
   const [publishing, setPublishing] = useState(false);
+  const [notice, setNotice] = useState<{ ok: boolean; title: string; detail: string } | null>(null);
+  const noticeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const scenarios = useMemo(
     () => generateScenarios(battery, appliances, powerSchedule, currentHour),
     [battery, appliances, powerSchedule, currentHour],
@@ -95,6 +99,37 @@ export const ScenarioPanel: React.FC<Props> = ({
   );
 
   const feasibleCount = scenarios.filter(s => s.feasible).length;
+
+  const showNotice = (n: { ok: boolean; title: string; detail: string }) => {
+    if (noticeTimer.current) clearTimeout(noticeTimer.current);
+    setNotice(n);
+    noticeTimer.current = setTimeout(() => setNotice(null), n.ok ? 5000 : 9000);
+  };
+
+  const handlePublish = async () => {
+    if (!onPublish) return;
+    const scenario = scenarios.find(s => s.id === activeScenarioId);
+    if (!scenario) {
+      showNotice({ ok: false, title: 'Сценарій не вибрано', detail: 'Натисніть на картку сценарію вище, а потім «Опублікувати».' });
+      return;
+    }
+    setPublishing(true);
+    const result = await onPublish(scenario);
+    setPublishing(false);
+    if (result.ok) {
+      showNotice({ ok: true, title: `«${scenario.name}» опубліковано`, detail: 'Мешканці побачать зміни протягом хвилини.' });
+    } else if (result.reason === 'auth') {
+      showNotice({ ok: false, title: 'Невірний PIN-код', detail: 'Перевірте PIN і спробуйте ще раз.' });
+    } else if (result.reason === 'http') {
+      const detail =
+        result.status === 403 ? 'Сервер не може записати файл сценарію (HTTP 403). Перевірте права на data/scenario.json.'
+        : result.status === 404 || result.status === 405 ? `Сервер не приймає збереження (HTTP ${result.status}). Потрібно налаштувати nginx — див. nginx-scenario.conf.`
+        : `Сервер відповів помилкою HTTP ${result.status}.`;
+      showNotice({ ok: false, title: 'Не вдалося зберегти', detail });
+    } else {
+      showNotice({ ok: false, title: "Немає з'єднання з сервером", detail: 'Перевірте інтернет і спробуйте ще раз.' });
+    }
+  };
 
   // Group scenarios by tag
   const grouped = useMemo(() => {
@@ -307,22 +342,13 @@ export const ScenarioPanel: React.FC<Props> = ({
               />
                             <button
                 disabled={!activeScenarioId || !pin || publishing}
-                onClick={async () => {
-                  const scenario = scenarios.find(s => s.id === activeScenarioId);
-                  if (!scenario || !onPublish) return;
-                  setPublishing(true);
-                  await onPublish(scenario);
-                  setPublishing(false);
-                }}
+                onClick={handlePublish}
                 className={`btn btn-primary px-5 ${publishing ? 'cursor-wait' : ''}`}
               >
                 <Share2 className="w-3.5 h-3.5" />
                 {publishing ? 'Зберігаю…' : 'Опублікувати'}
               </button>
             </div>
-            {authError && (
-              <p className="text-xs text-rose-700 font-semibold">Невірний PIN-код</p>
-            )}
             {!activeScenarioId && (
               <p className="text-xs text-slate-600">Оберіть сценарій для публікації</p>
             )}
@@ -332,6 +358,31 @@ export const ScenarioPanel: React.FC<Props> = ({
               </p>
             )}
           </div>
+        </div>
+      )}
+
+      {/* Publish result notification */}
+      {notice && (
+        <div
+          role={notice.ok ? 'status' : 'alert'}
+          className={`fixed z-50 bottom-4 left-1/2 -translate-x-1/2 w-[calc(100%-2rem)] max-w-sm flex items-start gap-3 rounded-2xl px-4 py-3.5 shadow-lg animate-fade-up ${
+            notice.ok ? 'bg-slate-900 text-white' : 'bg-rose-600 text-white'
+          }`}
+        >
+          <span className={`grid place-items-center w-7 h-7 rounded-full shrink-0 ${notice.ok ? 'bg-emerald-500' : 'bg-white/20'}`}>
+            {notice.ok ? <Check className="w-4 h-4" strokeWidth={3} /> : <X className="w-4 h-4" strokeWidth={3} />}
+          </span>
+          <div className="min-w-0 flex-1">
+            <div className="text-sm font-semibold leading-snug">{notice.title}</div>
+            <div className="text-[13px] opacity-90 leading-snug mt-0.5">{notice.detail}</div>
+          </div>
+          <button
+            onClick={() => setNotice(null)}
+            className="shrink-0 -mr-1 p-1 rounded-lg opacity-70 hover:opacity-100"
+            aria-label="Закрити"
+          >
+            <X className="w-4 h-4" />
+          </button>
         </div>
       )}
 

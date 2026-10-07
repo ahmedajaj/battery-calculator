@@ -64,6 +64,8 @@ export default defineConfig(({ mode }) => {
     base: '/battery-calculator/',
     plugins: [react(), tailwindcss(), scenarioDevPlugin(scenarioPin)],
     server: {
+      // scenario.json is rewritten by the publish endpoint — don't reload the page when it changes
+      watch: { ignored: ['**/data/**'] },
       proxy: {
         '/battery-calculator/api/yasno': {
           target: 'https://app.yasno.ua',

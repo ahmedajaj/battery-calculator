@@ -152,6 +152,8 @@ export function generateScenarios(
   baseAppliances: Appliance[],
   powerSchedule: PowerSchedule,
   currentHour: number,
+  /** Include situational scenarios regardless of conditions (used to look up a published one) */
+  includeAll = false,
 ): Scenario[] {
   const scenarios: Scenario[] = [];
   const situation = analyzeSituation(battery, powerSchedule, currentHour);
@@ -192,7 +194,8 @@ export function generateScenarios(
   //  EMERGENCY TIER  (heating only)
   // ═══════════════════════════════════════════════════════════════
 
-  if (batteryCritical && totalOutageHours > 0) {
+  const critical = batteryCritical && totalOutageHours > 0;
+  if (includeAll || critical) {
     add(
       'critical', 'alert', 'Критичний режим', 'emergency',
       `Заряд лише ${battery.currentCharge.toFixed(0)}%! Тільки опалення для збереження тепла.`,
@@ -203,7 +206,8 @@ export function generateScenarios(
         lighting: { enabled: false },
       },
     );
-  } else {
+  }
+  if (includeAll || !critical) {
     add(
       'heating-only', 'flame', 'Тільки опалення', 'emergency',
       'Мінімальне споживання — лише опалення працює цілодобово.',
@@ -232,7 +236,7 @@ export function generateScenarios(
   );
 
   // Night economy — water off 23-06
-  if (totalOutageHours > 6) {
+  if (includeAll || totalOutageHours > 6) {
     add(
       'water-night-off', 'moon', 'Нічна економія', 'economy',
       'Вода вимкнена 23:00–6:00. Ліфт у години пік. Економить батарею вночі.',
@@ -246,7 +250,7 @@ export function generateScenarios(
   }
 
   // Long outage economy — water only morning+evening
-  if (totalOutageHours >= 12) {
+  if (includeAll || totalOutageHours >= 12) {
     add(
       'long-outage', 'battery-low', 'Довгий блекаут', 'economy',
       `${totalOutageHours} год без світла. Вода лише вранці та ввечері. Суворий режим.`,
@@ -275,7 +279,7 @@ export function generateScenarios(
   );
 
   // Extended elevator hours when battery has capacity
-  if (batteryHigh || batteryMedium) {
+  if (includeAll || batteryHigh || batteryMedium) {
     add(
       'extended-elevator', 'elevator', 'Розширений ліфт', 'balanced',
       'Ліфт працює довше: 6–10 та 17–22. Зручно для мешканців.',
@@ -317,7 +321,7 @@ export function generateScenarios(
   );
 
   // Full power — battery is high & outage is manageable
-  if (batteryHigh && totalOutageHours > 0 && totalOutageHours <= 8) {
+  if (includeAll || (batteryHigh && totalOutageHours > 0 && totalOutageHours <= 8)) {
     add(
       'full-power', 'zap', 'Повна потужність', 'comfort',
       `Батарея ${battery.currentCharge.toFixed(0)}%! Усі прилади без обмежень 24/7.`,

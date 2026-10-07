@@ -16,7 +16,7 @@ import { calculateBatteryStatus, generateExtendedTimeline } from './utils/calcul
 import { generateScenarios, type Scenario } from './utils/scenarios';
 import { useYasnoData } from './hooks/useYasnoData';
 import { useDeyeData } from './hooks/useDeyeData';
-import { useSharedScenario } from './hooks/useSharedScenario';
+import { useSharedScenario, type SaveResult } from './hooks/useSharedScenario';
 
 /**
  * Build a merged PowerSchedule from Yasno today+tomorrow slots.
@@ -156,6 +156,8 @@ function App() {
   const [batterySettings, setBatterySettings] = useState<BatterySettings>(defaultBatterySettings);
   const [appliances, setAppliances] = useState<Appliance[]>(defaultAppliances);
   const [activeScenarioId, setActiveScenarioId] = useState<string | null>(null);
+  // Until the admin edits anything, the calculator mirrors the published scenario
+  const [touched, setTouched] = useState(false);
   const [powerSchedule, setPowerSchedule] = useState<PowerSchedule>(defaultPowerSchedule);
   const [currentTime, setCurrentTime] = useState(() => new Date());
   const [helpOpen, setHelpOpen] = useState(false);
@@ -222,26 +224,23 @@ function App() {
     return yasno.groupData.tomorrow.slots.length > 0;
   }, [yasno.mode, yasno.groupData]);
 
-  // Calculate all results reactively
-  const calculationResult = useMemo(() => {
-    return calculateBatteryStatus(effectiveBatterySettings, appliances, effectivePowerSchedule, currentHour);
-  }, [effectiveBatterySettings, appliances, effectivePowerSchedule, currentHour]);
-
   // Appliance-change handlers (clear active scenario on manual edits)
   const handleAppliancesChange = useCallback((newAppliances: Appliance[]) => {
     setAppliances(newAppliances);
     setActiveScenarioId(null);
+    setTouched(true);
   }, []);
 
   const handleApplyScenario = useCallback((scenarioId: string, newAppliances: Appliance[]) => {
     setAppliances(newAppliances);
     setActiveScenarioId(scenarioId);
+    setTouched(true);
   }, []);
 
   // Save scenario to shared storage (for residents) — requires PIN
-  const handlePublishScenario = useCallback(async (scenario: Scenario) => {
+  const handlePublishScenario = useCallback(async (scenario: Scenario): Promise<SaveResult> => {
     handleApplyScenario(scenario.id, scenario.appliances);
-    await sharedScenario.save({
+    return sharedScenario.save({
       scenarioId: scenario.id,
       scenarioName: scenario.name,
       scenarioTag: scenario.tag,
@@ -250,9 +249,9 @@ function App() {
     });
   }, [handleApplyScenario, sharedScenario]);
 
-  // Generate scenarios for lookup when on status page
+  // All scenarios (including situational ones) so the published one is always found
   const allScenarios = useMemo(
-    () => generateScenarios(effectiveBatterySettings, appliances, effectivePowerSchedule, currentHour),
+    () => generateScenarios(effectiveBatterySettings, appliances, effectivePowerSchedule, currentHour, true),
     [effectiveBatterySettings, appliances, effectivePowerSchedule, currentHour],
   );
 
@@ -289,6 +288,16 @@ function App() {
     const matched = allScenarios.find(s => s.id === sharedScenario.shared.scenarioId);
     return matched ? matched.appliances : appliances;
   }, [sharedScenario.shared.scenarioId, allScenarios, appliances]);
+
+  // Main calculator: follow the published scenario until the admin changes something
+  const publishedMatched = allScenarios.some(sc => sc.id === sharedScenario.shared.scenarioId);
+  const mainAppliances = touched ? appliances : statusAppliances;
+  const mainActiveScenarioId = touched ? activeScenarioId : (publishedMatched ? sharedScenario.shared.scenarioId : null);
+
+  // Calculate all results reactively
+  const calculationResult = useMemo(() => {
+    return calculateBatteryStatus(effectiveBatterySettings, mainAppliances, effectivePowerSchedule, currentHour);
+  }, [effectiveBatterySettings, mainAppliances, effectivePowerSchedule, currentHour]);
 
   // Recalculate status timeline with the shared scenario's appliances
   const statusTimelineWithScenario = useMemo(() => {
@@ -440,7 +449,7 @@ function App() {
             <span className="section-number">03</span>
             Керування приладами
           </div>
-          <ApplianceControls appliances={appliances} onChange={handleAppliancesChange} />
+          <ApplianceControls appliances={mainAppliances} onChange={handleAppliancesChange} />
         </section>
 
         {/* Section 4: Расписание */}
@@ -449,7 +458,7 @@ function App() {
             <span className="section-number">04</span>
             Розклад роботи приладів
           </div>
-          <TimelineScheduler appliances={appliances} onChange={handleAppliancesChange} powerSchedule={effectivePowerSchedule} onPowerScheduleChange={setPowerSchedule} currentHour={currentHour} powerScheduleLocked={lockedFields.powerSchedule} tomorrowHasData={tomorrowHasData} />
+          <TimelineScheduler appliances={mainAppliances} onChange={handleAppliancesChange} powerSchedule={effectivePowerSchedule} onPowerScheduleChange={setPowerSchedule} currentHour={currentHour} powerScheduleLocked={lockedFields.powerSchedule} tomorrowHasData={tomorrowHasData} />
         </section>
 
         {/* AI Scenario suggestions (near section 4) */}
@@ -460,7 +469,7 @@ function App() {
           currentHour={currentHour}
           tomorrowHasData={tomorrowHasData}
           onApply={handleApplyScenario}
-          activeScenarioId={activeScenarioId}
+          activeScenarioId={mainActiveScenarioId}
           offGapHours={offGapHours}
           onOffGapChange={setOffGapHours}
           onPublish={handlePublishScenario}

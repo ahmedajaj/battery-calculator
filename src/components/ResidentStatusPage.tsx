@@ -176,28 +176,29 @@ export const ResidentStatusPage: React.FC<Props> = ({ timelineData, battery, app
     <div className="min-h-screen w-full px-4 py-6 md:px-6 md:py-10">
       <div className="w-full max-w-lg" style={{ margin: '0 auto' }}>
 
-        {/* Header */}
-        <header className="flex items-center justify-between gap-3 mb-5 animate-fade-up">
-          <div className="min-w-0">
-            <h1 className="text-[1.375rem] font-bold tracking-tight text-slate-900 leading-tight">Стан батарей Русової 7А</h1>
-            <p className="text-[13px] text-slate-600 mt-0.5 capitalize truncate">
+        {/* Header: title on its own line, date + live status underneath */}
+        <header className="mb-5 animate-fade-up">
+          <h1 className="text-xl sm:text-[1.375rem] font-bold tracking-tight text-slate-900 leading-tight">Стан батарей Русової 7А</h1>
+          <div className="flex items-center gap-2 mt-1.5 text-[13px] text-slate-600">
+            <span className="capitalize truncate">
               {currentTime.toLocaleDateString('uk-UA', { weekday: 'long', day: 'numeric', month: 'long' })}
-            </p>
-          </div>
-          {isStale ? (
-            <span className="inline-flex items-center gap-1.5 shrink-0 text-[11px] font-semibold bg-rose-50 text-rose-600 pl-2 pr-2.5 py-1 rounded-full ring-1 ring-inset ring-rose-200">
-              <AlertTriangle className="w-3 h-3" />
-              Офлайн
             </span>
-          ) : (
-            <span className="inline-flex items-center gap-1.5 shrink-0 text-[11px] font-semibold glass text-emerald-800 pl-2 pr-2.5 py-1 rounded-full ring-1 ring-inset ring-emerald-200 shadow-sm">
-              <span className="relative flex w-2 h-2">
-                <span className="absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75 animate-ping" />
-                <span className="relative inline-flex w-2 h-2 rounded-full bg-emerald-500" />
+            <span className="w-1 h-1 rounded-full bg-slate-300 shrink-0" />
+            {isStale ? (
+              <span className="inline-flex items-center gap-1 shrink-0 font-semibold text-rose-700">
+                <AlertTriangle className="w-3.5 h-3.5" />
+                Офлайн
               </span>
-              Наживо{dataTimeStr ? ` · ${dataTimeStr}` : ''}
-            </span>
-          )}
+            ) : (
+              <span className="inline-flex items-center gap-1.5 shrink-0 font-semibold text-emerald-800">
+                <span className="relative flex w-2 h-2">
+                  <span className="absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75 animate-ping" />
+                  <span className="relative inline-flex w-2 h-2 rounded-full bg-emerald-500" />
+                </span>
+                Наживо{dataTimeStr ? ` · ${dataTimeStr}` : ''}
+              </span>
+            )}
+          </div>
         </header>
 
         {/* Big battery indicator */}
