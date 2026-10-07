@@ -94,20 +94,18 @@ export const FormulaSection: React.FC<Props> = ({ result, battery }) => {
 
   return (
     <details className="bg-white rounded-2xl border border-slate-200 shadow-sm group">
-      <summary className="cursor-pointer p-6 md:p-8 flex items-center gap-3 list-none [&::-webkit-details-marker]:hidden">
-        <div className="p-2.5 bg-indigo-50 rounded-xl">
-          <Calculator className="w-5 h-5 text-indigo-600" />
-        </div>
+      <summary className="cursor-pointer p-5 md:p-6 flex items-center gap-3 list-none [&::-webkit-details-marker]:hidden">
+        <div className="card-icon"><Calculator /></div>
         <div className="flex-1">
-          <h2 className="text-lg font-semibold text-slate-800">Формули розрахунків</h2>
-          <p className="text-sm text-slate-500">Детальний опис формул та підставлені значення</p>
+          <h2 className="card-title">Формули розрахунків</h2>
+          <p className="card-sub">Детальний опис формул та підставлені значення</p>
         </div>
-        <ChevronDown className="w-5 h-5 text-slate-400 transition-transform duration-200 group-open:rotate-180" />
+        <ChevronDown className="w-5 h-5 text-slate-600 transition-transform duration-200 group-open:rotate-180" />
       </summary>
 
-      <div className="px-6 md:px-8 pb-6 md:pb-8 space-y-4 border-t border-slate-100 pt-6">
+      <div className="px-5 md:px-6 pb-5 md:pb-6 space-y-3 border-t border-slate-200 pt-5">
         {/* Legend */}
-        <div className="grid grid-cols-2 gap-2 sm:gap-3 text-[10px] sm:text-xs text-slate-500 bg-slate-50 rounded-xl p-3 sm:p-4 border border-slate-200">
+        <div className="grid grid-cols-2 gap-2 sm:gap-3 text-xs text-slate-700 inset p-3 sm:p-4">
           <div><span className="font-mono font-semibold text-slate-700">C</span> — ємність ({battery.capacity} кВт·год)</div>
           <div><span className="font-mono font-semibold text-slate-700">SoC</span> — рівень заряду ({battery.currentCharge}%)</div>
           <div><span className="font-mono font-semibold text-slate-700">P</span> — споживання ({result.currentConsumption.toFixed(1)} кВт)</div>
@@ -116,35 +114,35 @@ export const FormulaSection: React.FC<Props> = ({ result, battery }) => {
 
         {/* Formula cards */}
         {formulas.map((f, i) => (
-          <div key={i} className="bg-slate-50 rounded-xl p-4 border border-slate-200 space-y-2">
+          <div key={i} className="bg-white rounded-xl p-4 ring-1 ring-slate-200 space-y-2">
             <div className="flex items-center gap-2">
               <span className="text-lg">{f.icon}</span>
-              <h3 className="font-semibold text-slate-800 text-sm">{f.title}</h3>
+              <h3 className="font-semibold text-slate-900 text-sm">{f.title}</h3>
             </div>
 
             {/* Generic formula */}
-            <div className="font-mono text-xs sm:text-sm text-indigo-700 bg-indigo-50 rounded-lg px-3 py-1.5 border border-indigo-100 overflow-x-auto">
+            <div className="font-mono text-xs sm:text-[13px] text-indigo-800 bg-indigo-50 rounded-lg px-3 py-2 ring-1 ring-inset ring-indigo-200 overflow-x-auto">
               {f.formula}
             </div>
 
             {/* Substituted values */}
-            <div className="font-mono text-xs sm:text-sm text-slate-600 bg-white rounded-lg px-3 py-1.5 border border-slate-200 overflow-x-auto">
+            <div className="font-mono text-xs sm:text-[13px] text-slate-800 inset px-3 py-2 overflow-x-auto">
               {f.substitution}
             </div>
 
             {/* Result */}
             <div className="flex items-center justify-between">
-              <span className="font-mono font-bold text-slate-800 text-base bg-green-50 rounded-lg px-3 py-1 border border-green-200">
+              <span className="font-mono font-bold text-emerald-900 text-[15px] bg-emerald-50 rounded-lg px-3 py-1 ring-1 ring-inset ring-emerald-300">
                 = {f.value}
               </span>
             </div>
 
             {/* Description */}
-            <p className="text-xs text-slate-400 leading-relaxed">{f.note}</p>
+            <p className="text-xs text-slate-600 leading-relaxed">{f.note}</p>
           </div>
         ))}
 
-        <div className="text-xs text-slate-400 text-center pt-2 border-t border-slate-100">
+        <div className="text-xs text-slate-600 text-center pt-3 border-t border-slate-200">
           💡 Значення оновлюються автоматично при зміні параметрів
         </div>
       </div>

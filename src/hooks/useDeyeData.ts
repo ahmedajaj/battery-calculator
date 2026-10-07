@@ -97,6 +97,7 @@ export function useDeyeData(pollInterval = 60_000): UseDeyeDataReturn {
     if (intervalRef.current) clearInterval(intervalRef.current);
 
     if (mode === 'deye' && tokenConfigured) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- initial fetch for polling subscription
       fetchData();
       intervalRef.current = setInterval(fetchData, pollInterval);
     }

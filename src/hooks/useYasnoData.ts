@@ -100,6 +100,7 @@ export function useYasnoData(pollInterval = 60_000): UseYasnoDataReturn {
     if (intervalRef.current) clearInterval(intervalRef.current);
 
     if (mode === 'yasno') {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- initial fetch for polling subscription
       fetchData();
       intervalRef.current = setInterval(fetchData, pollInterval);
     }

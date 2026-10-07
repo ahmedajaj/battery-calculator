@@ -1,5 +1,5 @@
-import React, { useMemo } from 'react';
-import { Sparkles, Check, X, Battery, Clock, Zap, ZapOff, AlertTriangle } from 'lucide-react';
+import React, { useMemo, useState } from 'react';
+import { Sparkles, Check, X, Battery, Clock, Zap, ZapOff, AlertTriangle, Share2 } from 'lucide-react';
 import type { BatterySettings, Appliance, PowerSchedule } from '../types';
 import { generateScenarios, analyzeSituation, type Scenario } from '../utils/scenarios';
 
@@ -13,13 +13,25 @@ interface Props {
   activeScenarioId: string | null;
   offGapHours: number;
   onOffGapChange: (hours: number) => void;
+  /** Publish the given scenario to shared storage for residents */
+  onPublish?: (scenario: Scenario) => Promise<void>;
+  /** Currently published scenario id */
+  publishedScenarioId?: string | null;
+  /** Timestamp of last publish */
+  publishedAt?: string | null;
+  /** Admin PIN for publishing */
+  pin?: string;
+  /** PIN change handler */
+  onPinChange?: (pin: string) => void;
+  /** Whether the last publish attempt failed due to wrong PIN */
+  authError?: boolean;
 }
 
 const TAG_STYLES: Record<Scenario['tag'], { bg: string; text: string; label: string }> = {
-  comfort:   { bg: 'bg-emerald-50', text: 'text-emerald-700', label: 'Комфорт' },
-  balanced:  { bg: 'bg-blue-50',    text: 'text-blue-700',    label: 'Баланс' },
-  economy:   { bg: 'bg-amber-50',   text: 'text-amber-700',   label: 'Економія' },
-  emergency: { bg: 'bg-red-50',     text: 'text-red-700',     label: 'Аварійний' },
+  comfort:   { bg: 'bg-emerald-50', text: 'text-emerald-800', label: 'Комфорт' },
+  balanced:  { bg: 'bg-sky-50',     text: 'text-sky-800',     label: 'Баланс' },
+  economy:   { bg: 'bg-amber-50',   text: 'text-amber-800',   label: 'Економія' },
+  emergency: { bg: 'bg-rose-50',    text: 'text-rose-800',    label: 'Аварійний' },
 };
 
 const TAG_ORDER: Scenario['tag'][] = ['comfort', 'balanced', 'economy', 'emergency'];
@@ -27,14 +39,14 @@ const TAG_ORDER: Scenario['tag'][] = ['comfort', 'balanced', 'economy', 'emergen
 /** Small visual battery icon with fill level + percentage */
 const BatteryPictogram: React.FC<{ level: number }> = ({ level }) => {
   const color =
-    level >= 60 ? 'text-green-500'
-    : level >= 30 ? 'text-amber-500'
-    : 'text-red-500';
+    level >= 60 ? 'text-emerald-800'
+    : level >= 30 ? 'text-amber-800'
+    : 'text-rose-700';
 
   const fillColor =
-    level >= 60 ? '#22c55e'
+    level >= 60 ? '#10b981'
     : level >= 30 ? '#f59e0b'
-    : '#ef4444';
+    : '#f43f5e';
 
   // SVG battery with dynamic fill
   const fillWidth = Math.max(0, Math.min(100, level));
@@ -49,7 +61,7 @@ const BatteryPictogram: React.FC<{ level: number }> = ({ level }) => {
         {/* Terminal nub */}
         <rect x="17" y="3" width="2.5" height="5" rx="1" fill="currentColor" opacity="0.5" />
       </svg>
-      <span className="text-[11px] font-medium">{level}%</span>
+      <span className="text-xs font-semibold">{level}%</span>
     </span>
   );
 };
@@ -64,7 +76,14 @@ export const ScenarioPanel: React.FC<Props> = ({
   activeScenarioId,
   offGapHours,
   onOffGapChange,
+  onPublish,
+  publishedScenarioId,
+  publishedAt,
+  pin = '',
+  onPinChange,
+  authError = false,
 }) => {
+  const [publishing, setPublishing] = useState(false);
   const scenarios = useMemo(
     () => generateScenarios(battery, appliances, powerSchedule, currentHour),
     [battery, appliances, powerSchedule, currentHour],
@@ -87,26 +106,24 @@ export const ScenarioPanel: React.FC<Props> = ({
   }, [scenarios]);
 
   return (
-    <div className="bg-white rounded-2xl p-5 md:p-6 border border-slate-200 shadow-sm">
+    <div className="card">
       {/* Header */}
-      <div className="flex items-center gap-3 mb-4">
-        <div className="p-2 bg-indigo-50 rounded-xl">
-          <Sparkles className="w-4 h-4 text-indigo-600" />
-        </div>
+      <div className="card-head">
+        <div className="card-icon"><Sparkles /></div>
         <div>
-          <h2 className="text-base font-semibold text-slate-800">
+          <h2 className="card-title">
             Рекомендовані сценарії
           </h2>
-          <p className="text-xs text-slate-500">
+          <p className="card-sub">
             Оберіть сценарій для зміни розкладу • {feasibleCount} з {scenarios.length} можливі
           </p>
         </div>
       </div>
 
       {/* Situation summary bar */}
-      <div className="flex flex-wrap gap-x-4 gap-y-1.5 mb-5 px-3 py-2.5 bg-slate-50 rounded-xl text-xs">
+      <div className="flex flex-wrap gap-x-5 gap-y-2 mb-5 px-3.5 py-3 inset text-[13px]">
         <div className="flex items-center gap-1.5">
-          <Battery className="w-3.5 h-3.5 text-blue-500" />
+          <Battery className="w-4 h-4 text-sky-600" />
           <span className="text-slate-600">
             <span className="font-semibold">{situation.batteryPercent.toFixed(0)}%</span>
             {' '}({situation.availableEnergyKwh} кВт·год)
@@ -115,15 +132,15 @@ export const ScenarioPanel: React.FC<Props> = ({
 
         <div className="flex items-center gap-1.5">
           {situation.isPowerOnNow
-            ? <Zap className="w-3.5 h-3.5 text-green-500" />
-            : <ZapOff className="w-3.5 h-3.5 text-red-500" />}
+            ? <Zap className="w-4 h-4 text-emerald-600" />
+            : <ZapOff className="w-4 h-4 text-rose-600" />}
           <span className="text-slate-600">
             {situation.isPowerOnNow ? 'Світло є' : 'Світла немає'}
           </span>
         </div>
 
         <div className="flex items-center gap-1.5">
-          <Clock className="w-3.5 h-3.5 text-slate-400" />
+          <Clock className="w-4 h-4 text-slate-500" />
           <span className="text-slate-600">
             {situation.totalOutageHours > 0
               ? `${situation.totalOutageHours} год без світла`
@@ -133,7 +150,7 @@ export const ScenarioPanel: React.FC<Props> = ({
 
         {!situation.isPowerOnNow && situation.hoursToNextPowerOn > 0 && (
           <div className="flex items-center gap-1.5">
-            <Zap className="w-3.5 h-3.5 text-amber-500" />
+            <Zap className="w-4 h-4 text-amber-700" />
             <span className="text-slate-600">
               Увімкнення через{' '}
               <span className="font-semibold">{situation.hoursToNextPowerOn} год</span>
@@ -143,7 +160,7 @@ export const ScenarioPanel: React.FC<Props> = ({
 
         {situation.isPowerOnNow && situation.hoursToNextOutage > 0 && (
           <div className="flex items-center gap-1.5">
-            <ZapOff className="w-3.5 h-3.5 text-amber-500" />
+            <ZapOff className="w-4 h-4 text-amber-700" />
             <span className="text-slate-600">
               Вимкнення через{' '}
               <span className="font-semibold">{situation.hoursToNextOutage} год</span>
@@ -154,15 +171,15 @@ export const ScenarioPanel: React.FC<Props> = ({
 
       {/* Uncertainty banner when tomorrow schedule is unknown */}
       {!tomorrowHasData && (
-        <div className="mb-5 px-3 py-3 bg-amber-50 border border-amber-200 rounded-xl text-xs space-y-2">
+        <div className="mb-5 alert alert-warn text-[13px] space-y-2">
           <div className="flex items-center gap-2">
-            <AlertTriangle className="w-3.5 h-3.5 text-amber-500 shrink-0" />
-            <span className="text-amber-700">
+            <AlertTriangle className="w-4 h-4 text-amber-800 shrink-0" />
+            <span>
               Розклад на завтра ще невідомий — оцінка за паузою між увімкненнями
             </span>
           </div>
-          <div className="flex items-center gap-2 pl-5">
-            <label className="text-amber-700 whitespace-nowrap">Пауза між увімк.:</label>
+          <div className="flex items-center gap-2 pl-6">
+            <label className="whitespace-nowrap font-medium">Пауза між увімк.:</label>
             <input
               type="number"
               min={1}
@@ -170,9 +187,9 @@ export const ScenarioPanel: React.FC<Props> = ({
               step={0.5}
               value={offGapHours}
               onChange={(e) => onOffGapChange(Math.max(1, Math.min(20, parseFloat(e.target.value) || 7)))}
-              className="w-14 bg-white border border-amber-300 rounded-lg px-2 py-1 text-sm font-mono text-slate-700 text-center focus:outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400/20"
+              className="input w-16 h-9 text-center px-1 !border-amber-400"
             />
-            <span className="text-amber-600">год</span>
+            <span>год</span>
           </div>
         </div>
       )}
@@ -190,36 +207,45 @@ export const ScenarioPanel: React.FC<Props> = ({
               <span className={`text-xs font-semibold uppercase tracking-wider ${tagMeta.text}`}>
                 {tagMeta.label}
               </span>
-              <div className="flex-1 h-px bg-slate-100" />
+              <div className="flex-1 h-px bg-slate-200" />
             </div>
 
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
               {group.map(scenario => {
                 const isActive = activeScenarioId === scenario.id;
+                const isPublished = publishedScenarioId === scenario.id;
 
                 return (
                   <button
                     key={scenario.id}
                     onClick={() => onApply(scenario.id, scenario.appliances)}
-                    className={`text-left p-4 rounded-xl border-2 transition-all duration-200 hover:shadow-md cursor-pointer ${
+                    aria-pressed={isActive}
+                    className={`text-left p-4 rounded-xl transition-all duration-200 cursor-pointer ${
                       isActive
-                        ? 'border-indigo-400 bg-indigo-50/50 shadow-md ring-1 ring-indigo-200'
+                        ? 'bg-white ring-2 ring-slate-900 shadow-md'
+                        : isPublished
+                        ? 'bg-emerald-50/60 ring-1 ring-emerald-400 hover:shadow-md'
                         : scenario.feasible
-                          ? 'border-slate-200 hover:border-blue-300 bg-white'
-                          : 'border-red-200 bg-red-50/20 opacity-60'
+                          ? 'bg-white ring-1 ring-slate-200 hover:ring-slate-400 hover:shadow-md'
+                          : 'bg-slate-50 ring-1 ring-inset ring-slate-200 hover:ring-slate-300'
                     }`}
                   >
-                    {/* Top row: icon + name + active badge */}
+                    {/* Top row: icon + name + badges */}
                     <div className="flex items-start gap-2 mb-1.5">
                       <span className="text-xl leading-none mt-0.5 shrink-0">{scenario.icon}</span>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 flex-wrap">
-                          <span className="font-semibold text-sm text-slate-800 leading-tight">
+                          <span className="font-semibold text-sm text-slate-900 leading-tight">
                             {scenario.name}
                           </span>
                           {isActive && (
-                            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-indigo-100 text-indigo-600 font-medium shrink-0">
+                            <span className="chip bg-slate-900 text-white ring-slate-900 shrink-0">
                               Обрано
+                            </span>
+                          )}
+                          {isPublished && !isActive && (
+                            <span className="chip chip-live shrink-0">
+                              Опубл.
                             </span>
                           )}
                         </div>
@@ -227,26 +253,26 @@ export const ScenarioPanel: React.FC<Props> = ({
                     </div>
 
                     {/* Description */}
-                    <p className="text-xs text-slate-500 mb-3 leading-relaxed">
+                    <p className="text-[13px] text-slate-600 mb-3 leading-relaxed">
                       {scenario.description}
                     </p>
 
                     {/* Metrics */}
-                    <div className="flex items-center gap-3 text-[11px]">
+                    <div className="flex items-center gap-3 text-xs">
                       <span
-                        className={`flex items-center gap-1 font-medium ${
-                          scenario.feasible ? 'text-green-600' : 'text-red-500'
+                        className={`flex items-center gap-1 font-semibold ${
+                          scenario.feasible ? 'text-emerald-800' : 'text-rose-700'
                         }`}
                       >
                         {scenario.feasible
                           ? <><Check className="w-3 h-3" /> Вистачить</>
                           : <><X className="w-3 h-3" /> Не вистачить</>}
                       </span>
-                      <span className="text-slate-300">•</span>
+                      <span className="text-slate-400">•</span>
                       {scenario.feasible ? (
                         <BatteryPictogram level={scenario.minBatteryLevel} />
                       ) : (
-                        <span className="flex items-center gap-1 text-red-400">
+                        <span className="flex items-center gap-1 font-medium text-rose-700">
                           <Clock className="w-3 h-3" />
                           о {scenario.minBatteryTime}:00
                         </span>
@@ -260,9 +286,53 @@ export const ScenarioPanel: React.FC<Props> = ({
         );
       })}
 
+      {/* Publish bar — appears below all scenario cards */}
+      {onPublish && (
+        <div className="mt-6 pt-5 border-t border-slate-200">
+          <div className="flex flex-col items-center gap-2.5">
+            <div className="inline-flex items-center gap-2">
+              <input
+                type="password"
+                inputMode="numeric"
+                value={pin}
+                onChange={(e) => onPinChange?.(e.target.value)}
+                placeholder="PIN"
+                aria-label="PIN-код"
+                className={`input w-24 text-center ${authError ? '!border-rose-500 !text-rose-700' : ''}`}
+              />
+                            <button
+                disabled={!activeScenarioId || !pin || publishing}
+                onClick={async () => {
+                  const scenario = scenarios.find(s => s.id === activeScenarioId);
+                  if (!scenario || !onPublish) return;
+                  setPublishing(true);
+                  await onPublish(scenario);
+                  setPublishing(false);
+                }}
+                className={`btn btn-primary px-5 ${publishing ? 'cursor-wait' : ''}`}
+              >
+                <Share2 className="w-3.5 h-3.5" />
+                {publishing ? 'Зберігаю…' : 'Опублікувати'}
+              </button>
+            </div>
+            {authError && (
+              <p className="text-xs text-rose-700 font-semibold">Невірний PIN-код</p>
+            )}
+            {!activeScenarioId && (
+              <p className="text-xs text-slate-600">Оберіть сценарій для публікації</p>
+            )}
+            {publishedScenarioId && publishedAt && (
+              <p className="text-xs text-slate-600">
+                Опубліковано {new Date(publishedAt).toLocaleString('uk-UA', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+              </p>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* No-outage hint */}
       {situation.totalOutageHours === 0 && (
-        <p className="text-center text-xs text-slate-400 mt-4">
+        <p className="text-center text-xs text-slate-600 mt-4">
           Відключень не заплановано — усі сценарії будуть працювати від мережі.
         </p>
       )}

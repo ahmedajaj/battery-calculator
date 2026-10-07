@@ -1,15 +1,68 @@
-import { defineConfig, loadEnv } from 'vite'
+import { defineConfig, loadEnv, type Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
+import fs from 'node:fs'
+import path from 'node:path'
+
+/** Dev-only plugin: serves GET/PUT for scenario.json (mimics nginx WebDAV in prod) */
+function scenarioDevPlugin(scenarioPin: string): Plugin {
+  const filePath = path.resolve(import.meta.dirname, 'data/scenario.json');
+  return {
+    name: 'scenario-dev-server',
+    configureServer(server) {
+      server.middlewares.use('/battery-calculator/data/scenario.json', (req, res) => {
+        if (req.method === 'GET') {
+          try {
+            const data = fs.readFileSync(filePath, 'utf-8');
+            res.setHeader('Content-Type', 'application/json');
+            res.end(data);
+          } catch {
+            res.setHeader('Content-Type', 'application/json');
+            res.end(JSON.stringify({ scenarioId: null, scenarioName: null, scenarioTag: null, updatedAt: null }));
+          }
+          return;
+        }
+        if (req.method === 'PUT') {
+          // Check PIN from Authorization header (Basic auth: user "admin", password = PIN)
+          const auth = req.headers.authorization || '';
+          const expected = 'Basic ' + Buffer.from(`admin:${scenarioPin}`).toString('base64');
+          if (auth !== expected) {
+            res.statusCode = 401;
+            res.end(JSON.stringify({ error: 'Invalid PIN' }));
+            return;
+          }
+          let body = '';
+          req.on('data', (chunk: Buffer) => { body += chunk.toString(); });
+          req.on('end', () => {
+            try {
+              JSON.parse(body); // validate
+              fs.mkdirSync(path.dirname(filePath), { recursive: true });
+              fs.writeFileSync(filePath, body, 'utf-8');
+              res.setHeader('Content-Type', 'application/json');
+              res.end(body);
+            } catch {
+              res.statusCode = 400;
+              res.end(JSON.stringify({ error: 'Invalid JSON' }));
+            }
+          });
+          return;
+        }
+        res.statusCode = 405;
+        res.end('Method not allowed');
+      });
+    },
+  };
+}
 
 // https://vite.dev/config/
 export default defineConfig(({ mode }) => {
   // Load all env vars (including non-VITE_ ones) for server-side proxy use
   const env = loadEnv(mode, process.cwd(), '');
+  const scenarioPin = env.SCENARIO_PIN || '1234';
 
   return {
     base: '/battery-calculator/',
-    plugins: [react(), tailwindcss()],
+    plugins: [react(), tailwindcss(), scenarioDevPlugin(scenarioPin)],
     server: {
       proxy: {
         '/battery-calculator/api/yasno': {
