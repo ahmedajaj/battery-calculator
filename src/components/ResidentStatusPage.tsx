@@ -1,5 +1,5 @@
 import React from 'react';
-import { Battery, Droplets, Flame, Building2, Lightbulb, Zap, ZapOff, Wifi, ArrowUp, ArrowDown, AlertTriangle, Minus } from 'lucide-react';
+import { Droplets, Flame, Building2, Lightbulb, Zap, ZapOff, ArrowUp, ArrowDown, AlertTriangle, Minus, Clock, Gauge, Plug, ChevronRight } from 'lucide-react';
 import type { TimelinePoint, BatterySettings, Appliance, PowerSchedule } from '../types';
 import { getChargeColor } from '../utils/calculations';
 
@@ -14,6 +14,14 @@ interface Props {
   tomorrowHasData?: boolean;
   deyeTimestamp?: Date | null;
   batteryPower?: number | null;
+  /** Name of the published scenario (from admin) */
+  sharedScenarioName?: string | null;
+  /** Tag of the published scenario */
+  sharedScenarioTag?: string | null;
+  /** Short description of the published scenario */
+  sharedScenarioDescription?: string | null;
+  /** When the scenario was published */
+  sharedScenarioUpdatedAt?: string | null;
 }
 
 /** Icon components for each appliance id */
@@ -33,14 +41,14 @@ const APPLIANCE_LABELS: Record<string, string> = {
 };
 
 /** Color palette per appliance for active state */
-const APPLIANCE_COLORS: Record<string, { bg: string; text: string; border: string; icon: string }> = {
-  heating: { bg: 'bg-red-50', text: 'text-red-700', border: 'border-red-200', icon: 'text-red-500' },
-  water: { bg: 'bg-blue-50', text: 'text-blue-700', border: 'border-blue-200', icon: 'text-blue-500' },
-  elevator: { bg: 'bg-purple-50', text: 'text-purple-700', border: 'border-purple-200', icon: 'text-purple-500' },
-  lighting: { bg: 'bg-amber-50', text: 'text-amber-700', border: 'border-amber-200', icon: 'text-amber-500' },
+const APPLIANCE_COLORS: Record<string, { solid: string }> = {
+  heating: { solid: 'bg-rose-500' },
+  water: { solid: 'bg-sky-500' },
+  elevator: { solid: 'bg-violet-500' },
+  lighting: { solid: 'bg-amber-500' },
 };
 
-const INACTIVE_STYLE = { bg: 'bg-slate-50', text: 'text-slate-300', border: 'border-slate-100', icon: 'text-slate-300' };
+const INACTIVE_STYLE = { solid: 'bg-slate-400' };
 
 /** Format hour number to HH:MM string */
 const fmtH = (h: number) => {
@@ -49,7 +57,68 @@ const fmtH = (h: number) => {
   return `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
 };
 
-export const ResidentStatusPage: React.FC<Props> = ({ timelineData, battery, appliances, powerSchedule, todayFullPeriods, tomorrowFullPeriods = [], currentTime, tomorrowHasData = true, deyeTimestamp, batteryPower }) => {
+/** One continuous stretch of the day with or without grid power (hours, 0–24) */
+interface PowerSegment { start: number; end: number; on: boolean }
+
+/** Turn the list of power-on periods into a full 0–24 sequence of on/off segments */
+const buildDaySegments = (onPeriods: { start: number; end: number }[]): PowerSegment[] => {
+  const sorted = [...onPeriods].filter(p => p.end > p.start).sort((a, b) => a.start - b.start);
+  const merged: { start: number; end: number }[] = [];
+  for (const p of sorted) {
+    const last = merged[merged.length - 1];
+    if (last && p.start <= last.end) last.end = Math.max(last.end, p.end);
+    else merged.push({ ...p });
+  }
+  const segs: PowerSegment[] = [];
+  let cursor = 0;
+  for (const p of merged) {
+    if (p.start > cursor) segs.push({ start: cursor, end: p.start, on: false });
+    segs.push({ start: p.start, end: p.end, on: true });
+    cursor = p.end;
+  }
+  if (cursor < 24) segs.push({ start: cursor, end: 24, on: false });
+  return segs;
+};
+
+/** One day of the power schedule as a plain list of on/off periods */
+const DaySchedule: React.FC<{
+  title: string;
+  dateLabel: string;
+  segments: PowerSegment[];
+  /** Current time in fractional hours — only for today (hides past periods) */
+  nowH?: number;
+}> = ({ title, dateLabel, segments, nowH }) => {
+  const visible = nowH != null ? segments.filter(s => s.end > nowH) : segments;
+  return (
+    <div>
+      <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-700 mb-1.5">
+        {title} <span className="font-medium normal-case tracking-normal text-slate-500">· {dateLabel}</span>
+      </h3>
+      <ul>
+        {visible.map((s, i) => {
+          const current = nowH != null && s.start <= nowH && s.end > nowH;
+          return (
+            <li
+              key={i}
+              className={`flex items-center gap-3 py-2 px-2 -mx-2 rounded-lg ${current ? (s.on ? 'bg-emerald-50' : 'bg-rose-50') : ''}`}
+            >
+              <span className={`w-1.5 h-7 rounded-full shrink-0 ${s.on ? 'bg-emerald-500' : 'bg-rose-500'}`} />
+              <span className="font-mono text-[15px] font-semibold text-slate-900 tabular-nums">
+                {fmtH(s.start)} – {fmtH(s.end)}
+              </span>
+              <span className={`ml-auto text-sm font-medium ${s.on ? 'text-emerald-800' : 'text-rose-700'}`}>
+                {s.on ? 'Світло є' : 'Немає світла'}
+              </span>
+              {current && <span className={`chip -mr-0.5 text-white ${s.on ? 'bg-emerald-600 ring-emerald-600' : 'bg-rose-600 ring-rose-600'}`}>зараз</span>}
+            </li>
+          );
+        })}
+      </ul>
+    </div>
+  );
+};
+
+export const ResidentStatusPage: React.FC<Props> = ({ timelineData, battery, appliances, todayFullPeriods, tomorrowFullPeriods = [], currentTime, tomorrowHasData = true, deyeTimestamp, batteryPower }) => {
   const currentHour = currentTime.getHours();
   const levelColor = getChargeColor(battery.currentCharge);
 
@@ -86,285 +155,305 @@ export const ResidentStatusPage: React.FC<Props> = ({ timelineData, battery, app
     return ids;
   };
 
+  const level = Math.min(100, Math.max(0, battery.currentCharge));
+  const RING_R = 52;
+  const RING_C = 2 * Math.PI * RING_R;
+
+  // ── Power schedule: full on/off segments for today & tomorrow ──
+  const nowH = currentTime.getHours() + currentTime.getMinutes() / 60;
+  const tomorrowDate = new Date(currentTime.getFullYear(), currentTime.getMonth(), currentTime.getDate() + 1);
+  const todaySegments = buildDaySegments(todayFullPeriods);
+  const tomorrowSegments = tomorrowHasData ? buildDaySegments(tomorrowPeriods) : [];
+
+  // Hourly table rows (cut at midnight when tomorrow is unknown)
+  const tableRows = (!tomorrowHasData && midnightIndex > 0) ? timelineData.slice(0, midnightIndex) : timelineData;
+
+  const powerKw = batteryPower != null ? Math.abs(batteryPower) / 1000 : null;
+  // No inverter reading yet — show placeholders instead of a scary 0%
+  const awaitingData = deyeTimestamp == null;
+
   return (
-    <div className="min-h-screen w-full px-4 py-6 md:px-6 md:py-8 lg:px-8 lg:py-10 bg-slate-50">
+    <div className="min-h-screen w-full px-4 py-6 md:px-6 md:py-10">
       <div className="w-full max-w-lg" style={{ margin: '0 auto' }}>
 
         {/* Header */}
-        <header className="text-center mb-6">
-          <h1 className="text-xl font-bold text-slate-800 mb-1">Стан батарей Русової 7А</h1>
-          <p className="text-sm text-slate-400">
-            {currentTime.toLocaleDateString('uk-UA', { weekday: 'long', day: 'numeric', month: 'long' })}
-            {dataTimeStr ? ` · дані о ${dataTimeStr}` : ` · ${currentTime.toLocaleTimeString('uk-UA', { hour: '2-digit', minute: '2-digit' })}`}
-          </p>
+        <header className="flex items-center justify-between gap-3 mb-5 animate-fade-up">
+          <div className="min-w-0">
+            <h1 className="text-[1.375rem] font-bold tracking-tight text-slate-900 leading-tight">Стан батарей Русової 7А</h1>
+            <p className="text-[13px] text-slate-600 mt-0.5 capitalize truncate">
+              {currentTime.toLocaleDateString('uk-UA', { weekday: 'long', day: 'numeric', month: 'long' })}
+            </p>
+          </div>
+          {isStale ? (
+            <span className="inline-flex items-center gap-1.5 shrink-0 text-[11px] font-semibold bg-rose-50 text-rose-600 pl-2 pr-2.5 py-1 rounded-full ring-1 ring-inset ring-rose-200">
+              <AlertTriangle className="w-3 h-3" />
+              Офлайн
+            </span>
+          ) : (
+            <span className="inline-flex items-center gap-1.5 shrink-0 text-[11px] font-semibold glass text-emerald-800 pl-2 pr-2.5 py-1 rounded-full ring-1 ring-inset ring-emerald-200 shadow-sm">
+              <span className="relative flex w-2 h-2">
+                <span className="absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75 animate-ping" />
+                <span className="relative inline-flex w-2 h-2 rounded-full bg-emerald-500" />
+              </span>
+              Наживо{dataTimeStr ? ` · ${dataTimeStr}` : ''}
+            </span>
+          )}
         </header>
 
         {/* Big battery indicator */}
-        <div className="bg-white rounded-2xl border border-slate-200 p-6 mb-4 shadow-sm">
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-3">
-              <div className="p-2.5 rounded-xl" style={{ backgroundColor: `${levelColor}15` }}>
-                <Battery className="w-6 h-6" style={{ color: levelColor }} />
+        <div className="relative overflow-hidden bg-white rounded-3xl border border-slate-200 p-5 sm:p-6 mb-3 shadow-md animate-fade-up">
+          <div
+            className="pointer-events-none absolute -top-24 -right-24 w-64 h-64 rounded-full blur-3xl opacity-25"
+            style={{ backgroundColor: awaitingData ? 'transparent' : levelColor }}
+          />
+          <div className="relative flex items-center gap-5 sm:gap-6">
+            {/* Ring gauge */}
+            <div className="relative shrink-0 w-32 h-32 sm:w-40 sm:h-40">
+              <svg viewBox="0 0 120 120" className="w-full h-full -rotate-90">
+                <circle cx="60" cy="60" r={RING_R} fill="none" stroke="var(--color-slate-100)" strokeWidth="10" />
+                <circle
+                  cx="60" cy="60" r={RING_R} fill="none"
+                  stroke={levelColor} strokeWidth="10" strokeLinecap="round"
+                  strokeDasharray={RING_C}
+                  strokeDashoffset={RING_C * (1 - (awaitingData ? 0 : level) / 100)}
+                  className="transition-[stroke-dashoffset] duration-1000 ease-out"
+                />
+              </svg>
+              <div className="absolute inset-0 grid place-items-center">
+                <div className="flex items-baseline leading-none">
+                  <span className="text-4xl sm:text-[2.75rem] font-bold tracking-tighter text-slate-900">{awaitingData ? '—' : Math.round(level)}</span>
+                  {!awaitingData && <span className="text-lg font-semibold text-slate-400 ml-0.5">%</span>}
+                </div>
               </div>
-              <div>
-                <p className="text-sm text-slate-500">Заряд батареї</p>
-                <p className="text-3xl font-bold" style={{ color: levelColor }}>
-                  {Math.round(battery.currentCharge)}%
-                </p>
-              </div>
+              {/* Direction marker at the tip of the arc: points back when discharging, forward when charging */}
+              {!awaitingData && (chargeState === 'discharging' || chargeState === 'charging') && (() => {
+                const deg = (level / 100) * 360;
+                const rad = (deg * Math.PI) / 180;
+                const x = 60 + RING_R * Math.sin(rad);
+                const y = 60 - RING_R * Math.cos(rad);
+                const discharging = chargeState === 'discharging';
+                return (
+                  <span
+                    className="absolute -translate-x-1/2 -translate-y-1/2"
+                    style={{ left: `${(x / 120) * 100}%`, top: `${(y / 120) * 100}%` }}
+                    aria-label={discharging ? 'Розряджається' : 'Заряджається'}
+                  >
+                    <span className={`absolute inset-0 rounded-full animate-ping opacity-40 ${discharging ? 'bg-amber-400' : 'bg-emerald-400'}`} />
+                    <span className={`relative grid place-items-center w-6 h-6 rounded-full bg-white shadow-md ring-2 ${discharging ? 'ring-amber-500 text-amber-600' : 'ring-emerald-500 text-emerald-600'}`}>
+                      <ChevronRight className="w-4 h-4" strokeWidth={3} style={{ transform: `rotate(${discharging ? deg + 180 : deg}deg)` }} />
+                    </span>
+                  </span>
+                );
+              })()}
             </div>
-            {isStale ? (
-              <span className="inline-flex items-center gap-1.5 text-[10px] font-semibold bg-red-50 text-red-500 px-2.5 py-1 rounded-full border border-red-200">
-                <AlertTriangle className="w-3 h-3" />
-                OFFLINE
-              </span>
-            ) : (
-              <span className="inline-flex items-center gap-1.5 text-[10px] font-semibold bg-green-50 text-green-600 px-2.5 py-1 rounded-full border border-green-200">
-                <Wifi className="w-3 h-3" />
-                LIVE
-              </span>
-            )}
-          </div>
 
-          {/* Charging state */}
-          {chargeState !== 'unknown' && (
-            <div className={`flex items-center gap-2 mb-3 text-sm font-medium ${
-              chargeState === 'charging' ? 'text-green-600' : chargeState === 'discharging' ? 'text-amber-600' : 'text-slate-400'
-            }`}>
-              {chargeState === 'charging' && <ArrowUp className="w-4 h-4" />}
-              {chargeState === 'discharging' && <ArrowDown className="w-4 h-4" />}
-              {chargeState === 'idle' && <Minus className="w-4 h-4" />}
-              <span>
-                {chargeState === 'charging' ? 'Заряджається'
-                  : chargeState === 'discharging' ? 'Розряджається'
-                  : 'Очікування'}
-              </span>
+            <div className="min-w-0 flex-1">
+              <div className="text-[13px] font-medium text-slate-600">{awaitingData ? 'Завантаження даних…' : 'Заряд батареї'}</div>
+              {chargeState !== 'unknown' && (
+                <div className={`flex items-center gap-1.5 mt-1 text-base sm:text-lg font-semibold leading-tight ${
+                  chargeState === 'charging' ? 'text-emerald-700'
+                  : chargeState === 'discharging' ? 'text-amber-700'
+                  : 'text-slate-600'
+                }`}>
+                  {chargeState === 'charging' && <ArrowUp className="w-5 h-5 shrink-0" strokeWidth={2.5} />}
+                  {chargeState === 'discharging' && <ArrowDown className="w-5 h-5 shrink-0" strokeWidth={2.5} />}
+                  {chargeState === 'idle' && <Minus className="w-5 h-5 shrink-0" strokeWidth={2.5} />}
+                  {chargeState === 'charging' ? 'Заряджається'
+                    : chargeState === 'discharging' ? 'Розряджається'
+                    : 'Очікування'}
+                </div>
+              )}
+              {powerKw != null && chargeState !== 'idle' && (
+                <div className="flex items-center gap-2 mt-3">
+                  <span className={`grid place-items-center w-8 h-8 rounded-lg shrink-0 ${chargeState === 'charging' ? 'bg-emerald-100 text-emerald-700' : 'bg-violet-100 text-violet-700'}`}>
+                    {chargeState === 'charging' ? <Plug className="w-4 h-4" /> : <Gauge className="w-4 h-4" />}
+                  </span>
+                  <div className="leading-tight">
+                    <div className="text-xs text-slate-600">{chargeState === 'charging' ? 'Зарядка' : 'Споживання'}</div>
+                    <div className="text-[15px] font-semibold text-slate-900 font-mono">{powerKw.toFixed(1)} кВт</div>
+                  </div>
+                </div>
+              )}
             </div>
-          )}
-
-          <div className="w-full h-4 bg-slate-100 rounded-full overflow-hidden">
-            <div
-              className="h-full rounded-full transition-all duration-700"
-              style={{
-                width: `${Math.min(100, Math.max(0, battery.currentCharge))}%`,
-                backgroundColor: levelColor,
-              }}
-            />
           </div>
 
           {/* Stale data warning */}
           {isStale && (
-            <div className="mt-3 flex items-center gap-2 bg-red-50 text-red-600 text-xs font-medium px-3 py-2 rounded-lg border border-red-200">
+            <div className="relative mt-4 flex items-center gap-2 bg-rose-50 text-rose-600 text-xs font-medium px-3 py-2 rounded-xl ring-1 ring-inset ring-rose-200">
               <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />
               <span>Інвертор не оновлювався понад 30 хв — дані можуть бути неактуальні</span>
             </div>
           )}
         </div>
 
-        {/* Today / Tomorrow status cards */}
-        <div className="grid grid-cols-2 gap-3 mb-4">
-          <div className="bg-white rounded-xl border border-slate-200 p-3 shadow-sm">
-            <div className="flex items-center gap-1.5 mb-2">
-              <span className="w-2 h-2 rounded-full bg-green-500" />
-              <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide">Сьогодні</p>
+        {/* Power schedule */}
+        <div className="bg-white rounded-2xl border border-slate-200 p-4 sm:p-5 mb-3 shadow-sm animate-fade-up">
+          <div className="flex items-center gap-3 mb-4">
+            <div className="card-icon"><Zap /></div>
+            <div>
+              <h2 className="card-title">Графік світла</h2>
+              <p className="card-sub">За графіком ДТЕК</p>
             </div>
-            {todayFullPeriods.length > 0 ? (
-              <div className="space-y-1">
-                {todayFullPeriods.map((p, i) => {
-                  const passed = p.end <= startHour;
-                  const active = p.start <= startHour && p.end > startHour;
-                  return (
-                    <div key={i} className={`flex items-center gap-1.5 ${passed ? 'opacity-35' : ''}`}>
-                      <Zap className={`w-3 h-3 ${active ? 'text-green-500 animate-pulse' : passed ? 'text-slate-400' : 'text-green-500'}`} />
-                      <span className={`text-xs font-mono font-semibold ${passed ? 'text-slate-400 line-through' : active ? 'text-green-700' : 'text-slate-700'}`}>{fmtH(p.start)} – {fmtH(p.end)}</span>
-                      {active && <span className="text-[9px] text-green-600 font-bold">ЗАРАЗ</span>}
-                    </div>
-                  );
-                })}
-              </div>
-            ) : (
-              <p className="text-xs text-red-500 font-medium">Немає електрики</p>
-            )}
           </div>
-          <div className={`bg-white rounded-xl border p-3 shadow-sm ${tomorrowHasData ? 'border-slate-200' : 'border-amber-200 bg-amber-50/30'}`}>
-            <div className="flex items-center gap-1.5 mb-2">
-              <span className={`w-2 h-2 rounded-full ${tomorrowHasData ? 'bg-green-500' : 'bg-amber-500'}`} />
-              <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide">Завтра</p>
-            </div>
+
+          <div className="space-y-4">
+            <DaySchedule
+              title="Сьогодні"
+              dateLabel={currentTime.toLocaleDateString('uk-UA', { weekday: 'short', day: 'numeric', month: 'short' })}
+              segments={todaySegments}
+              nowH={nowH}
+            />
             {tomorrowHasData ? (
-              tomorrowPeriods.length > 0 ? (
-                <div className="space-y-1">
-                  {tomorrowPeriods.map((p, i) => (
-                    <div key={i} className="flex items-center gap-1.5">
-                      <Zap className="w-3 h-3 text-green-500" />
-                      <span className="text-xs font-mono font-semibold text-slate-700">{fmtH(p.start)} – {fmtH(p.end)}</span>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <p className="text-xs text-red-500 font-medium">Немає електрики</p>
-              )
+              <DaySchedule
+                title="Завтра"
+                dateLabel={tomorrowDate.toLocaleDateString('uk-UA', { weekday: 'short', day: 'numeric', month: 'short' })}
+                segments={tomorrowSegments}
+              />
             ) : (
-              <p className="text-xs text-amber-600 font-medium">Графік ще не опубліковано</p>
+              <div>
+                <h3 className="text-[15px] font-semibold text-slate-900 mb-2.5">
+                  Завтра <span className="font-normal text-slate-600 capitalize">· {tomorrowDate.toLocaleDateString('uk-UA', { weekday: 'short', day: 'numeric', month: 'short' })}</span>
+                </h3>
+                <div className="alert alert-warn text-[13px]">ДТЕК ще не опублікував графік на завтра</div>
+              </div>
             )}
           </div>
+
         </div>
 
-        {/* Explanation for residents */}
-        <div className="bg-slate-100/70 rounded-xl px-4 py-3 mb-4 text-xs text-slate-500 space-y-1">
-          <p>📋 <b className="text-slate-600">Таблиця нижче</b> — це <b>прогноз</b> роботи обладнання {tomorrowHasData ? 'до кінця завтрашнього дня' : 'до кінця доби'}.</p>
-          <p>🔋 Рівень батареї оновлюється в реальному часі з інвертора.</p>
-          {!tomorrowHasData && (
-            <p>⚠️ Графік на завтра ще не опубліковано ДТЕК — таблиця показує прогноз лише до 00:00.</p>
-          )}
-        </div>
-
-        {/* Appliance legend */}
-        <div className="flex items-center justify-center gap-3 mb-4 flex-wrap">
-          {trackedAppliances.map(a => {
-            const colors = APPLIANCE_COLORS[a.id] ?? INACTIVE_STYLE;
-            const Icon = APPLIANCE_ICONS[a.id];
-            return (
-              <div key={a.id} className="flex items-center gap-1.5 text-xs text-slate-500">
-                {Icon && <Icon className={`w-3.5 h-3.5 ${colors.icon}`} />}
-                <span>{APPLIANCE_LABELS[a.id] ?? a.nameUa}</span>
+        {/* Hourly forecast */}
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden animate-fade-up">
+          <div className="p-4 sm:p-5 pb-3 sm:pb-4">
+            <div className="flex items-center gap-3">
+              <div className="card-icon"><Clock /></div>
+              <div>
+                <h2 className="card-title">Прогноз по годинах</h2>
+                <p className="card-sub">
+                  Заряд батареї та робота обладнання {tomorrowHasData ? 'до кінця завтра' : 'до кінця доби'}
+                </p>
               </div>
-            );
-          })}
-        </div>
+            </div>
+            {/* Appliance legend */}
+            <div className="flex items-center gap-x-4 gap-y-1.5 mt-3.5 flex-wrap">
+              {trackedAppliances.map(a => {
+                const colors = APPLIANCE_COLORS[a.id] ?? INACTIVE_STYLE;
+                const Icon = APPLIANCE_ICONS[a.id];
+                return (
+                  <div key={a.id} className="flex items-center gap-1.5 text-[13px] font-medium text-slate-700">
+                    {Icon && (
+                      <span className={`grid place-items-center w-6 h-6 rounded-md ${colors.solid}`}>
+                        <Icon className="w-3.5 h-3.5 text-white" />
+                      </span>
+                    )}
+                    <span>{APPLIANCE_LABELS[a.id] ?? a.nameUa}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
 
-        {/* Hourly table */}
-        <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
           <div className="overflow-x-auto">
-          <table className="w-full text-sm min-w-0">
+          <table className="w-full text-sm">
             <thead>
-              <tr className="bg-slate-50 text-slate-500 text-xs">
-                <th className="px-2 py-2 text-left font-semibold">Час</th>
-                <th className="px-1.5 py-2 text-center font-semibold">Батарея</th>
-                <th className="px-1.5 py-2 text-center font-semibold">Мережа</th>
-                {trackedAppliances.map(a => {
-                  const Icon = APPLIANCE_ICONS[a.id];
-                  return (
-                    <th key={a.id} className="px-1 py-2 text-center font-semibold">
-                      {Icon ? <Icon className="w-3.5 h-3.5 mx-auto text-slate-400" /> : a.nameUa}
-                    </th>
-                  );
-                })}
+              <tr className="border-y border-slate-200 bg-slate-50 text-slate-700 text-[11px] font-semibold uppercase tracking-wider">
+                <th className="pl-4 sm:pl-5 pr-2 py-2 text-left font-semibold">Час</th>
+                <th className="px-1.5 sm:px-2 py-2 text-left font-semibold">Заряд</th>
+                <th className="px-1.5 sm:px-2 py-2 text-left font-semibold">Світло</th>
+                <th className="pl-2 pr-4 sm:pr-5 py-2 text-right font-semibold">Працює</th>
               </tr>
             </thead>
             <tbody>
-              {((!tomorrowHasData && midnightIndex > 0) ? timelineData.slice(0, midnightIndex) : timelineData).map((point, i) => {
+              {tableRows.map((point, i) => {
                 const isNow = i === 0;
                 const isMidnight = i > 0 && point.time === 0;
                 const isEstimated = !tomorrowHasData && midnightIndex > 0 && i >= midnightIndex;
                 const isCritical = point.batteryLevel <= battery.minDischarge;
-                const isLow = point.batteryLevel <= battery.minDischarge + 15;
                 const color = getChargeColor(point.batteryLevel);
                 const activeIds = getActiveApplianceIds(point);
-
-                const hourLabel = point.time;
-                const isCurrentHour = point.time === currentHour && i === 0;
-                const colSpan = 3 + trackedAppliances.length;
+                const prev = tableRows[i - 1];
+                const gridChanged = prev != null && prev.charging !== point.charging;
 
                 return (
                   <React.Fragment key={i}>
-                  {/* Midnight delimiter */}
-                  {isMidnight && (
-                    <tr className="bg-indigo-50/80">
-                      <td colSpan={colSpan} className="px-3 py-1.5 text-center">
-                        <span className="text-[11px] font-semibold text-indigo-600">🌙 Нова доба — 00:00</span>
-                        {!tomorrowHasData && (
-                          <span className="ml-2 text-[10px] text-amber-600 font-medium">⚠ графік орієнтовний</span>
+                  {(i === 0 || isMidnight) && (
+                    <tr>
+                      <td colSpan={4} className={`pl-4 sm:pl-5 pr-4 py-1.5 bg-slate-100/80 text-xs font-semibold text-slate-800 ${i > 0 ? 'border-t border-slate-200' : ''}`}>
+                        {i === 0 ? 'Сьогодні' : 'Завтра'}
+                        <span className="font-normal text-slate-600 capitalize">
+                          {' · '}{(i === 0 ? currentTime : tomorrowDate).toLocaleDateString('uk-UA', { weekday: 'short', day: 'numeric', month: 'short' })}
+                        </span>
+                        {isMidnight && !tomorrowHasData && (
+                          <span className="ml-2 text-amber-800 font-medium">≈ орієнтовно</span>
                         )}
                       </td>
                     </tr>
                   )}
                   <tr
-                    className={`border-t border-slate-100 transition-colors ${
-                      isCurrentHour
-                        ? 'bg-blue-50/70'
-                        : isCritical
-                        ? 'bg-red-50/40'
-                        : isLow
-                        ? 'bg-amber-50/30'
-                        : isEstimated
-                        ? 'bg-amber-50/20'
-                        : i % 2 === 0
-                        ? 'bg-white'
-                        : 'bg-slate-50/40'
+                    className={`${gridChanged ? 'border-t-2 border-slate-300' : 'border-t border-slate-100'} ${
+                      isNow ? 'bg-emerald-50' : isCritical ? 'bg-rose-50' : isEstimated ? 'bg-amber-50/50' : 'bg-white'
                     }`}
                   >
                     {/* Hour */}
-                    <td className="px-2 py-2 whitespace-nowrap">
-                      <div className="flex items-center gap-1.5">
-                        {isNow && <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />}
-                        <span className={`font-mono font-semibold text-xs ${isNow ? 'text-blue-700' : 'text-slate-600'}`}>
-                          {hourLabel}:00
+                    <td className="pl-4 sm:pl-5 pr-2 py-2.5 whitespace-nowrap">
+                      <div className="flex items-center gap-2">
+                        <span className={`font-mono text-[13px] font-semibold ${isNow ? 'text-emerald-900' : 'text-slate-900'}`}>
+                          {String(point.time).padStart(2, '0')}:00
                         </span>
-                        {isNow && <span className="text-[9px] text-blue-500 font-bold">ЗАРАЗ</span>}
-                        {isEstimated && !isNow && <span className="text-[9px] text-amber-500">~</span>}
+                        {isNow && <span className="sm:hidden w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />}
+                        {isNow && <span className="hidden sm:inline-flex chip bg-emerald-600 text-white ring-emerald-600 !text-[10px] !px-1.5">ЗАРАЗ</span>}
+                        {isEstimated && !isNow && <span className="text-xs text-amber-700" title="Орієнтовно">≈</span>}
                       </div>
                     </td>
 
-                    {/* Battery bar */}
-                    <td className="px-1.5 py-2">
-                      <div className="flex items-center justify-center">
-                        <div className="w-10 h-2 bg-slate-100 rounded-full overflow-hidden">
+                    {/* Battery */}
+                    <td className="px-1.5 sm:px-2 py-2.5">
+                      <div className="flex items-center gap-1.5 sm:gap-2">
+                        <span className="font-mono text-[13px] font-semibold text-slate-900 w-9 text-right tabular-nums">
+                          {Math.round(point.batteryLevel)}%
+                        </span>
+                        <div className="w-8 sm:w-14 h-1.5 bg-slate-200 rounded-full overflow-hidden">
                           <div
-                            className="h-full rounded-full transition-all"
-                            style={{
-                              width: `${Math.min(100, Math.max(0, point.batteryLevel))}%`,
-                              backgroundColor: color,
-                            }}
+                            className="h-full rounded-full"
+                            style={{ width: `${Math.min(100, Math.max(0, point.batteryLevel))}%`, backgroundColor: color }}
                           />
                         </div>
                       </div>
                     </td>
 
-                    {/* Grid power */}
-                    <td className="px-1.5 py-2 text-center">
-                      {isEstimated ? (
-                        point.charging ? (
-                          <span className="inline-flex items-center gap-1 text-[10px] font-bold bg-amber-50 text-amber-600 px-2 py-0.5 rounded-full border border-dashed border-amber-300">
-                            <Zap className="w-3 h-3" />
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center gap-1 text-[10px] font-bold bg-amber-50 text-amber-400 px-2 py-0.5 rounded-full border border-dashed border-amber-200">
-                            <ZapOff className="w-3 h-3" />
-                          </span>
-                        )
+                    {/* Grid */}
+                    <td className="px-1.5 sm:px-2 py-2.5">
+                      {point.charging ? (
+                        <span className={`inline-flex items-center gap-1 text-xs font-semibold text-emerald-800 ${isEstimated ? 'opacity-70' : ''}`}>
+                          <Zap className="w-3.5 h-3.5 fill-emerald-500 text-emerald-600" /> є
+                        </span>
                       ) : (
-                        point.charging ? (
-                          <span className="inline-flex items-center gap-1 text-[10px] font-bold bg-green-100 text-green-700 px-2 py-0.5 rounded-full">
-                            <Zap className="w-3 h-3" />
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center gap-1 text-[10px] font-bold bg-red-50 text-red-400 px-2 py-0.5 rounded-full">
-                            <ZapOff className="w-3 h-3" />
-                          </span>
-                        )
+                        <span className={`inline-flex items-center gap-1 text-xs font-semibold text-slate-700 ${isEstimated ? 'opacity-70' : ''}`}>
+                          <ZapOff className="w-3.5 h-3.5" /> немає
+                        </span>
                       )}
                     </td>
 
-                    {/* Appliance statuses */}
-                    {trackedAppliances.map(a => {
-                      const isActive = activeIds.has(a.id);
-                      const colors = isActive
-                        ? (APPLIANCE_COLORS[a.id] ?? INACTIVE_STYLE)
-                        : INACTIVE_STYLE;
-                      const Icon = APPLIANCE_ICONS[a.id];
-                      return (
-                        <td key={a.id} className="px-1 py-2 text-center">
-                          <span
-                            className={`inline-flex items-center justify-center w-6 h-6 rounded-md border ${colors.bg} ${colors.border} transition-all ${
-                              isActive ? 'scale-100' : 'scale-90 opacity-40'
-                            }`}
-                          >
-                            {Icon && <Icon className={`w-3 h-3 ${colors.icon}`} />}
-                          </span>
-                        </td>
-                      );
-                    })}
+                    {/* Appliances */}
+                    <td className="pl-1.5 sm:pl-2 pr-4 sm:pr-5 py-2.5">
+                      <div className="flex items-center justify-end gap-0.5 sm:gap-1">
+                        {trackedAppliances.map(a => {
+                          const isActive = activeIds.has(a.id);
+                          const Icon = APPLIANCE_ICONS[a.id];
+                          const colors = APPLIANCE_COLORS[a.id] ?? INACTIVE_STYLE;
+                          return (
+                            <span
+                              key={a.id}
+                              title={`${APPLIANCE_LABELS[a.id] ?? a.nameUa}: ${isActive ? 'працює' : 'вимкнено'}`}
+                              className={`grid place-items-center w-6 h-6 rounded-md ${isActive ? colors.solid : 'bg-transparent'}`}
+                            >
+                              {isActive && Icon
+                                ? <Icon className="w-3.5 h-3.5 text-white" />
+                                : <span className="w-1.5 h-1.5 rounded-full bg-slate-300" />}
+                            </span>
+                          );
+                        })}
+                      </div>
+                    </td>
                   </tr>
                   </React.Fragment>
                 );
@@ -372,10 +461,14 @@ export const ResidentStatusPage: React.FC<Props> = ({ timelineData, battery, app
             </tbody>
           </table>
           </div>
+          <div className="px-4 sm:px-5 py-2.5 border-t border-slate-200 bg-slate-50 text-xs text-slate-600">
+            Кольоровий значок — обладнання працює, крапка — вимкнено.
+            {!tomorrowHasData && ' Позначка ≈ — орієнтовний прогноз.'}
+          </div>
         </div>
 
         {/* Footer */}
-        <footer className="text-center py-6 text-slate-300 text-xs">
+        <footer className="text-center py-8 text-slate-600 text-xs">
           Автоматично оновлюється · Калькулятор батареї
         </footer>
       </div>

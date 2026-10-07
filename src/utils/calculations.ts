@@ -253,7 +253,7 @@ export function formatHours(hours: number): string {
 }
 
 export function getChargeColor(percentage: number): string {
-  if (percentage >= 70) return '#22c55e'; // green
-  if (percentage >= 40) return '#f59e0b'; // yellow
-  return '#ef4444'; // red
+  if (percentage >= 70) return '#10b981'; // emerald
+  if (percentage >= 40) return '#f59e0b'; // amber
+  return '#f43f5e'; // rose
 }

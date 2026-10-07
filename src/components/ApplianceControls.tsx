@@ -1,5 +1,5 @@
 import React from 'react';
-import { Droplets, Flame, Building2, Lightbulb, Power, PowerOff } from 'lucide-react';
+import { Droplets, Flame, Building2, Lightbulb, Power } from 'lucide-react';
 import type { Appliance } from '../types';
 
 interface Props {
@@ -36,17 +36,16 @@ export const ApplianceControls: React.FC<Props> = ({ appliances, onChange }) => 
     .reduce((sum, a) => sum + a.power, 0);
 
   return (
-    <div className="bg-white rounded-2xl p-5 md:p-6 border border-slate-200 shadow-sm">
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-3">
-          <div className="p-2 bg-purple-50 rounded-xl">
-            <Power className="w-4 h-4 text-purple-600" />
-          </div>
-          <h2 className="text-base font-semibold text-slate-800">Прилади</h2>
+    <div className="card">
+      <div className="card-head">
+        <div className="card-icon"><Power /></div>
+        <div className="flex-1">
+          <h2 className="card-title">Прилади</h2>
+          <p className="card-sub">Увімкніть потрібні та вкажіть потужність</p>
         </div>
-        <div className="text-right bg-purple-50 px-3 py-1.5 rounded-lg">
-          <div className="text-xs text-purple-600">Загальне</div>
-          <div className="text-base font-bold text-purple-600">{totalPower.toFixed(1)} кВт</div>
+        <div className="text-right inset px-3 py-1.5">
+          <div className="text-[11px] font-medium text-slate-600">Загалом</div>
+          <div className="text-base font-bold tracking-tight text-slate-900">{totalPower.toFixed(1)} кВт</div>
         </div>
       </div>
 
@@ -54,74 +53,51 @@ export const ApplianceControls: React.FC<Props> = ({ appliances, onChange }) => 
         {appliances.map((appliance) => (
           <div
             key={appliance.id}
-            className={`relative overflow-hidden rounded-xl border transition-all duration-300 ${
+            className={`rounded-xl p-3 flex flex-col gap-3 transition-all duration-200 ${
               appliance.enabled
-                ? 'bg-white border-slate-200 shadow-sm'
-                : 'bg-slate-50/50 border-slate-100'
+                ? 'bg-white ring-1 ring-slate-200 shadow-sm'
+                : 'bg-slate-50 ring-1 ring-inset ring-slate-200 border-dashed'
             }`}
           >
-            {/* Color indicator */}
-            <div
-              className="absolute left-0 top-0 bottom-0 w-1"
-              style={{
-                backgroundColor: appliance.enabled ? appliance.color : `${appliance.color}80`,
-              }}
-            />
-
-            <div className="p-3 pl-4 flex flex-col gap-2">
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => handleToggle(appliance.id)}
-                  className={`p-1.5 rounded-lg transition-all duration-300 ${
-                    appliance.enabled
-                      ? 'bg-green-100 text-green-600 hover:bg-green-200'
-                      : 'bg-slate-100 text-slate-400 hover:bg-slate-200'
-                  }`}
-                >
-                  {appliance.enabled ? (
-                    <Power className="w-3.5 h-3.5" />
-                  ) : (
-                    <PowerOff className="w-3.5 h-3.5" />
-                  )}
-                </button>
-
-                <div
-                  className={`p-1.5 rounded-lg transition-all duration-300 ${
-                    appliance.enabled ? 'bg-slate-100' : 'bg-slate-50'
-                  }`}
-                  style={{ color: appliance.enabled ? appliance.color : '#94a3b8' }}
-                >
-                  {iconMap[appliance.id]}
-                </div>
-
-                <h3
-                  className={`text-sm font-medium transition-colors duration-300 leading-tight ${
-                    appliance.enabled ? 'text-slate-800' : 'text-slate-400'
-                  }`}
-                >
-                  {appliance.nameUa}
-                </h3>
+            <div className="flex items-center gap-2.5">
+              <div
+                className="grid place-items-center w-8 h-8 rounded-lg shrink-0 transition-colors"
+                style={{
+                  backgroundColor: appliance.enabled ? `${appliance.color}1f` : 'var(--color-slate-200)',
+                  color: appliance.enabled ? appliance.color : 'var(--color-slate-500)',
+                }}
+              >
+                {iconMap[appliance.id]}
               </div>
+              <h3 className={`flex-1 min-w-0 text-sm font-semibold leading-tight truncate ${appliance.enabled ? 'text-slate-900' : 'text-slate-500'}`}>
+                {appliance.nameUa}
+              </h3>
+              {/* Toggle switch */}
+              <button
+                role="switch"
+                aria-checked={appliance.enabled}
+                aria-label={appliance.enabled ? `Вимкнути: ${appliance.nameUa}` : `Увімкнути: ${appliance.nameUa}`}
+                onClick={() => handleToggle(appliance.id)}
+                className={`relative shrink-0 w-9 h-5 rounded-full transition-colors ${appliance.enabled ? 'bg-emerald-600' : 'bg-slate-300'}`}
+              >
+                <span className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${appliance.enabled ? 'translate-x-4' : ''}`} />
+              </button>
+            </div>
 
-              <div className="flex items-center gap-1.5">
-                <input
-                  type="number"
-                  min="0.1"
-                  max="20"
-                  step="0.1"
-                  value={appliance.power}
-                  onChange={(e) =>
-                    handlePowerChange(appliance.id, parseFloat(e.target.value) || 0.1)
-                  }
-                  disabled={!appliance.enabled}
-                  className={`w-full bg-slate-50 border border-slate-200 rounded-md px-2 py-1 text-sm font-mono transition-all duration-300 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 ${
-                    appliance.enabled
-                      ? 'text-slate-800'
-                      : 'text-slate-400 opacity-50 cursor-not-allowed'
-                  }`}
-                />
-                <span className="text-xs text-slate-400 shrink-0">кВт</span>
-              </div>
+            <div className="relative">
+              <input
+                type="number"
+                min="0.1"
+                max="20"
+                step="0.1"
+                value={appliance.power}
+                onChange={(e) =>
+                  handlePowerChange(appliance.id, parseFloat(e.target.value) || 0.1)
+                }
+                disabled={!appliance.enabled}
+                className="input h-9 pr-10"
+              />
+              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-medium text-slate-500 pointer-events-none">кВт</span>
             </div>
           </div>
         ))}

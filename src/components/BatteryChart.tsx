@@ -11,9 +11,38 @@ import {
   ComposedChart,
   Bar,
 } from 'recharts';
+import type { TooltipContentProps } from 'recharts';
 import { BarChart3, Table2, ChevronDown } from 'lucide-react';
 import type { TimelinePoint, BatterySettings, PowerSchedule } from '../types';
 import { getChargeColor } from '../utils/calculations';
+
+const CustomTooltip = ({ active, payload, label }: TooltipContentProps) => {
+  if (active && payload && payload.length) {
+    const data = payload[0].payload as TimelinePoint;
+    return (
+      <div className="bg-white/95 backdrop-blur ring-1 ring-slate-200 rounded-xl p-3.5 shadow-lg">
+        <p className="text-slate-900 font-semibold font-mono mb-2">{label}</p>
+        <div className="space-y-1 text-sm">
+          <p className="text-sky-700">
+            🔋 Заряд: <span className="font-mono font-semibold">{data.batteryLevel.toFixed(1)}%</span>
+          </p>
+          <p className="text-violet-700">
+            ⚡ Споживання: <span className="font-mono font-semibold">{data.consumption.toFixed(1)} кВт</span>
+          </p>
+          <p className={data.charging ? 'text-emerald-800' : 'text-rose-700'}>
+            {data.charging ? '🔌 Зарядка' : '🔋 Розряд'}
+          </p>
+          {data.appliances.length > 0 && (
+            <p className="text-slate-600 text-xs mt-2">
+              Активно: {data.appliances.join(', ')}
+            </p>
+          )}
+        </div>
+      </div>
+    );
+  }
+  return null;
+};
 
 interface Props {
   timelineData: TimelinePoint[];
@@ -54,48 +83,18 @@ export const BatteryChart: React.FC<Props> = ({ timelineData, battery, powerSche
     const offLabel = chartData.find(d => d.time === offHour)?.timeLabel;
     const onEstimated = !tomorrowHasData && onHour < startHour;
     const offEstimated = !tomorrowHasData && offHour < startHour;
-    if (onLabel) powerRefLines.push({ label: onLabel, color: onEstimated ? '#d97706' : '#22c55e', text: onEstimated ? '⚡ Увімк (оцінка)' : '⚡ Увімк', estimated: onEstimated });
-    if (offLabel) powerRefLines.push({ label: offLabel, color: offEstimated ? '#d97706' : '#ef4444', text: offEstimated ? '❌ Вимк (оцінка)' : '❌ Вимк', estimated: offEstimated });
+    if (onLabel) powerRefLines.push({ label: onLabel, color: onEstimated ? '#b45309' : '#047857', text: onEstimated ? '⚡ Увімк (оцінка)' : '⚡ Увімк', estimated: onEstimated });
+    if (offLabel) powerRefLines.push({ label: offLabel, color: offEstimated ? '#b45309' : '#be123c', text: offEstimated ? '❌ Вимк (оцінка)' : '❌ Вимк', estimated: offEstimated });
   }
   void currentHour; // used for reactivity
 
-  const CustomTooltip = ({ active, payload, label }: any) => {
-    if (active && payload && payload.length) {
-      const data = payload[0].payload as TimelinePoint;
-      return (
-        <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-lg">
-          <p className="text-slate-800 font-semibold mb-2">{label}</p>
-          <div className="space-y-1 text-sm">
-            <p className="text-blue-600">
-              🔋 Заряд: <span className="font-mono font-semibold">{data.batteryLevel.toFixed(1)}%</span>
-            </p>
-            <p className="text-purple-600">
-              ⚡ Споживання: <span className="font-mono font-semibold">{data.consumption.toFixed(1)} кВт</span>
-            </p>
-            <p className={data.charging ? 'text-green-600' : 'text-red-600'}>
-              {data.charging ? '🔌 Зарядка' : '🔋 Розряд'}
-            </p>
-            {data.appliances.length > 0 && (
-              <p className="text-slate-500 text-xs mt-2">
-                Активно: {data.appliances.join(', ')}
-              </p>
-            )}
-          </div>
-        </div>
-      );
-    }
-    return null;
-  };
-
   return (
-    <div className="bg-white rounded-2xl p-4 sm:p-6 md:p-8 border border-slate-200 shadow-sm">
-      <div className="flex items-center gap-3 mb-6">
-        <div className="p-2.5 bg-blue-50 rounded-xl">
-          <BarChart3 className="w-5 h-5 text-blue-600" />
-        </div>
+    <div className="card">
+      <div className="card-head">
+        <div className="card-icon"><BarChart3 /></div>
         <div>
-          <h2 className="text-lg font-semibold text-slate-800">Прогноз заряду батареї</h2>
-          <p className="text-sm text-slate-500">Прогноз на 24 години починаючи з поточного часу</p>
+          <h2 className="card-title">Прогноз заряду батареї</h2>
+          <p className="card-sub">Прогноз на 24 години починаючи з поточного часу</p>
         </div>
       </div>
 
@@ -104,50 +103,50 @@ export const BatteryChart: React.FC<Props> = ({ timelineData, battery, powerSche
           <ComposedChart data={chartData} margin={{ top: 22, right: 10, left: 0, bottom: 0 }}>
             <defs>
               <linearGradient id="batteryGradient" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.6} />
-                <stop offset="95%" stopColor="#3b82f6" stopOpacity={0.05} />
+                <stop offset="5%" stopColor="#0284c7" stopOpacity={0.35} />
+                <stop offset="95%" stopColor="#0284c7" stopOpacity={0.02} />
               </linearGradient>
               <linearGradient id="consumptionGradient" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%" stopColor="#a855f7" stopOpacity={0.7} />
-                <stop offset="95%" stopColor="#a855f7" stopOpacity={0.1} />
+                <stop offset="5%" stopColor="#8b5cf6" stopOpacity={0.55} />
+                <stop offset="95%" stopColor="#8b5cf6" stopOpacity={0.15} />
               </linearGradient>
             </defs>
 
-            <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+            <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
 
             <XAxis
               dataKey="timeLabel"
-              stroke="#94a3b8"
-              tick={{ fill: '#64748b', fontSize: 10 }}
+              stroke="#cbd5e1"
+              tick={{ fill: '#334155', fontSize: 11 }}
               interval={3}
             />
             <YAxis
               yAxisId="battery"
-              stroke="#94a3b8"
-              tick={{ fill: '#64748b', fontSize: 12 }}
+              stroke="#cbd5e1"
+              tick={{ fill: '#334155', fontSize: 11 }}
               domain={[0, 100]}
               tickFormatter={(value) => `${value}%`}
             />
             <YAxis
               yAxisId="consumption"
               orientation="right"
-              stroke="#94a3b8"
-              tick={{ fill: '#64748b', fontSize: 12 }}
+              stroke="#cbd5e1"
+              tick={{ fill: '#334155', fontSize: 11 }}
               domain={[0, 'auto']}
               tickFormatter={(value) => `${value}кВт`}
             />
 
-            <Tooltip content={<CustomTooltip />} />
+            <Tooltip content={CustomTooltip} />
 
             {/* Min discharge line */}
             <ReferenceLine
               yAxisId="battery"
               y={battery.minDischarge}
-              stroke="#ef4444"
+              stroke="#e11d48"
               strokeDasharray="5 5"
               label={{
                 value: `Мін: ${battery.minDischarge}%`,
-                fill: '#ef4444',
+                fill: '#be123c',
                 fontSize: 11,
                 position: 'right',
               }}
@@ -157,11 +156,11 @@ export const BatteryChart: React.FC<Props> = ({ timelineData, battery, powerSche
             <ReferenceLine
               yAxisId="battery"
               y={battery.maxCharge}
-              stroke="#22c55e"
+              stroke="#059669"
               strokeDasharray="5 5"
               label={{
                 value: `Макс: ${battery.maxCharge}%`,
-                fill: '#22c55e',
+                fill: '#047857',
                 fontSize: 11,
                 position: 'right',
               }}
@@ -177,8 +176,8 @@ export const BatteryChart: React.FC<Props> = ({ timelineData, battery, powerSche
                 strokeDasharray="6 3"
                 label={{
                   value: '🌙 00:00',
-                  fill: '#6366f1',
-                  fontSize: 10,
+                  fill: '#4338ca',
+                  fontSize: 11,
                   position: 'top',
                 }}
               />
@@ -197,8 +196,8 @@ export const BatteryChart: React.FC<Props> = ({ timelineData, battery, powerSche
                 strokeDasharray="4 4"
                 label={{
                   value: '⚠ Немає даних на завтра',
-                  fill: '#d97706',
-                  fontSize: 10,
+                  fill: '#b45309',
+                  fontSize: 11,
                   position: 'insideTop',
                 }}
               />
@@ -216,7 +215,8 @@ export const BatteryChart: React.FC<Props> = ({ timelineData, battery, powerSche
                 label={{
                   value: line.text,
                   fill: line.color,
-                  fontSize: 10,
+                  fontSize: 11,
+                  fontWeight: 600,
                   position: 'top',
                 }}
               />
@@ -236,8 +236,8 @@ export const BatteryChart: React.FC<Props> = ({ timelineData, battery, powerSche
               yAxisId="battery"
               type="monotone"
               dataKey="batteryLevel"
-              stroke="#3b82f6"
-              strokeWidth={3}
+              stroke="#0284c7"
+              strokeWidth={2.5}
               fill="url(#batteryGradient)"
             />
           </ComposedChart>
@@ -245,27 +245,27 @@ export const BatteryChart: React.FC<Props> = ({ timelineData, battery, powerSche
       </div>
 
       {/* Legend */}
-      <div className="flex items-center justify-center gap-3 sm:gap-6 mt-4 text-xs sm:text-sm bg-slate-50 py-2 sm:py-3 rounded-xl flex-wrap">
+      <div className="flex items-center justify-center gap-3 sm:gap-6 mt-4 text-xs sm:text-[13px] inset py-2.5 px-3 flex-wrap">
         <div className="flex items-center gap-2">
-          <div className="w-4 h-4 rounded bg-blue-500" />
-          <span className="text-slate-600">Рівень заряду</span>
+          <div className="w-3.5 h-3.5 rounded bg-sky-600" />
+          <span className="text-slate-800 font-medium">Рівень заряду</span>
         </div>
         <div className="flex items-center gap-2">
-          <div className="w-4 h-4 rounded bg-purple-500" />
-          <span className="text-slate-600">Споживання</span>
+          <div className="w-3.5 h-3.5 rounded bg-violet-500" />
+          <span className="text-slate-800 font-medium">Споживання</span>
         </div>
         <div className="flex items-center gap-2">
-          <div className="w-6 h-0.5 border-t-2 border-dashed border-red-500" />
-          <span className="text-slate-600">Ліміти</span>
+          <div className="w-6 h-0.5 border-t-2 border-dashed border-rose-600" />
+          <span className="text-slate-800 font-medium">Ліміти</span>
         </div>
         <div className="flex items-center gap-2">
           <div className="w-4 h-4 border-l-2 border-dashed border-indigo-500" />
-          <span className="text-slate-600">Північ</span>
+          <span className="text-slate-800 font-medium">Північ</span>
         </div>
         {powerRefLines.some(l => l.estimated) && (
           <div className="flex items-center gap-2">
             <div className="w-4 h-4 border-l-2 border-dashed border-amber-600" />
-            <span className="text-slate-600">Оцінка</span>
+            <span className="text-slate-800 font-medium">Оцінка</span>
           </div>
         )}
       </div>
@@ -274,7 +274,8 @@ export const BatteryChart: React.FC<Props> = ({ timelineData, battery, powerSche
       <div className="mt-4">
         <button
           onClick={() => setTableOpen(!tableOpen)}
-          className="w-full flex items-center justify-center gap-2 py-2.5 px-4 bg-slate-50 hover:bg-slate-100 rounded-xl border border-slate-200 text-sm font-medium text-slate-600 transition-colors"
+          className="btn btn-secondary w-full"
+          aria-expanded={tableOpen}
         >
           <Table2 className="w-4 h-4" />
           Погодинна таблиця
@@ -282,11 +283,11 @@ export const BatteryChart: React.FC<Props> = ({ timelineData, battery, powerSche
         </button>
 
         {tableOpen && (
-          <div className="mt-3 rounded-xl border border-slate-200 overflow-hidden">
+          <div className="mt-3 rounded-xl ring-1 ring-slate-200 overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="bg-slate-100 text-slate-600">
+                  <tr className="bg-slate-50 text-slate-700">
                     <th className="px-3 py-2.5 text-left font-semibold text-xs whitespace-nowrap">🕐 Час</th>
                     <th className="px-3 py-2.5 text-right font-semibold text-xs whitespace-nowrap">🔋 Заряд</th>
                     <th className="px-3 py-2.5 text-right font-semibold text-xs whitespace-nowrap">⚡ кВт</th>
@@ -308,9 +309,9 @@ export const BatteryChart: React.FC<Props> = ({ timelineData, battery, powerSche
                       {isMidnight && (
                         <tr className="bg-indigo-50/80">
                           <td colSpan={5} className="px-3 py-1.5 text-center">
-                            <span className="text-[11px] font-semibold text-indigo-600">🌙 Нова доба — 00:00</span>
+                            <span className="text-xs font-semibold text-indigo-700">🌙 Нова доба — 00:00</span>
                             {!tomorrowHasData && (
-                              <span className="ml-2 text-[10px] text-amber-600 font-medium">⚠ Немає даних ДТЕК</span>
+                              <span className="ml-2 text-[11px] text-amber-800 font-medium">⚠ Немає даних ДТЕК</span>
                             )}
                           </td>
                         </tr>
@@ -318,7 +319,7 @@ export const BatteryChart: React.FC<Props> = ({ timelineData, battery, powerSche
                       <tr
                         className={`border-t border-slate-100 transition-colors ${
                           isNow
-                            ? 'bg-blue-50/60'
+                            ? 'bg-emerald-50/70'
                             : isCritical
                             ? 'bg-red-50/50'
                             : isLow
@@ -333,19 +334,19 @@ export const BatteryChart: React.FC<Props> = ({ timelineData, battery, powerSche
                         {/* Time */}
                         <td className="px-3 py-2 whitespace-nowrap">
                           <div className="flex items-center gap-1.5">
-                            {isNow && <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />}
-                            <span className={`font-mono font-medium ${isNow ? 'text-blue-700' : 'text-slate-700'}`}>
+                            {isNow && <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />}
+                            <span className={`font-mono font-medium ${isNow ? 'text-emerald-800 font-semibold' : 'text-slate-800'}`}>
                               {point.time}:00
                             </span>
-                            {isNow && <span className="text-[10px] text-blue-500 font-semibold">ЗАРАЗ</span>}
-                            {isUncertain && <span className="text-[10px] text-amber-500">⚠</span>}
+                            {isNow && <span className="text-[11px] text-emerald-800 font-bold">ЗАРАЗ</span>}
+                            {isUncertain && <span className="text-[11px] text-amber-800">⚠</span>}
                           </div>
                         </td>
 
                         {/* Battery level with mini bar */}
                         <td className="px-3 py-2 text-right">
                           <div className="flex items-center justify-end gap-2">
-                            <div className="w-16 h-2.5 bg-slate-200 rounded-full overflow-hidden hidden sm:block">
+                            <div className="w-16 h-1.5 bg-slate-200 rounded-full overflow-hidden hidden sm:block">
                               <div
                                 className="h-full rounded-full transition-all"
                                 style={{
@@ -355,8 +356,7 @@ export const BatteryChart: React.FC<Props> = ({ timelineData, battery, powerSche
                               />
                             </div>
                             <span
-                              className="font-mono font-bold text-xs min-w-[3.5rem] text-right"
-                              style={{ color: levelColor }}
+                              className="font-mono font-semibold text-xs min-w-[3.5rem] text-right text-slate-900"
                             >
                               {point.batteryLevel.toFixed(1)}%
                             </span>
@@ -366,22 +366,22 @@ export const BatteryChart: React.FC<Props> = ({ timelineData, battery, powerSche
                         {/* Consumption */}
                         <td className="px-3 py-2 text-right">
                           {point.consumption > 0 ? (
-                            <span className="font-mono text-xs bg-purple-50 text-purple-700 px-2 py-0.5 rounded-md border border-purple-100">
+                            <span className="font-mono text-xs font-medium bg-violet-50 text-violet-800 px-2 py-0.5 rounded-md ring-1 ring-inset ring-violet-200">
                               {point.consumption.toFixed(1)}
                             </span>
                           ) : (
-                            <span className="font-mono text-xs text-slate-300">0.0</span>
+                            <span className="font-mono text-xs text-slate-400">0.0</span>
                           )}
                         </td>
 
                         {/* Power status */}
                         <td className="px-3 py-2 text-center">
                           {point.charging ? (
-                            <span className="inline-flex items-center gap-1 text-[10px] font-bold bg-green-100 text-green-700 px-2 py-0.5 rounded-full border border-green-200">
+                            <span className="chip chip-live">
                               ⚡ Так
                             </span>
                           ) : (
-                            <span className="inline-flex items-center gap-1 text-[10px] font-bold bg-red-50 text-red-500 px-2 py-0.5 rounded-full border border-red-100">
+                            <span className="chip chip-error">
                               ✕ Ні
                             </span>
                           )}
@@ -394,14 +394,14 @@ export const BatteryChart: React.FC<Props> = ({ timelineData, battery, powerSche
                               {point.appliances.map((name, j) => (
                                 <span
                                   key={j}
-                                  className="text-[10px] bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded-md border border-slate-200"
+                                  className="text-[11px] font-medium bg-slate-100 text-slate-700 px-1.5 py-0.5 rounded-md ring-1 ring-inset ring-slate-200"
                                 >
                                   {name}
                                 </span>
                               ))}
                             </div>
                           ) : (
-                            <span className="text-xs text-slate-300">—</span>
+                            <span className="text-xs text-slate-400">—</span>
                           )}
                         </td>
                       </tr>
@@ -413,8 +413,8 @@ export const BatteryChart: React.FC<Props> = ({ timelineData, battery, powerSche
             </div>
 
             {/* Table legend */}
-            <div className="flex items-center justify-center gap-4 py-2 px-3 bg-slate-50 border-t border-slate-200 text-[10px] text-slate-400 flex-wrap">
-              <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-blue-500" /> Поточна година</span>
+            <div className="flex items-center justify-center gap-4 py-2.5 px-3 bg-slate-50 border-t border-slate-200 text-[11px] text-slate-700 flex-wrap">
+              <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-emerald-500" /> Поточна година</span>
               <span className="flex items-center gap-1"><span className="w-2 h-2 rounded bg-red-200" /> Критичний рівень</span>
               <span className="flex items-center gap-1"><span className="w-2 h-2 rounded bg-amber-200" /> Низький рівень</span>
             </div>
