@@ -12,6 +12,8 @@ interface Props {
   tomorrowFullPeriods?: { start: number; end: number }[];
   currentTime: Date;
   tomorrowHasData?: boolean;
+  /** DTEK suspended the hourly schedule (e.g. emergency outages) — forecast is worst case */
+  scheduleSuspended?: boolean;
   deyeTimestamp?: Date | null;
   batteryPower?: number | null;
   /** Name of the published scenario (from admin) */
@@ -118,7 +120,7 @@ const DaySchedule: React.FC<{
   );
 };
 
-export const ResidentStatusPage: React.FC<Props> = ({ timelineData, battery, appliances, todayFullPeriods, tomorrowFullPeriods = [], currentTime, tomorrowHasData = true, deyeTimestamp, batteryPower }) => {
+export const ResidentStatusPage: React.FC<Props> = ({ timelineData, battery, appliances, todayFullPeriods, tomorrowFullPeriods = [], currentTime, tomorrowHasData = true, scheduleSuspended = false, deyeTimestamp, batteryPower }) => {
   const currentHour = currentTime.getHours();
   const levelColor = getChargeColor(battery.currentCharge);
 
@@ -293,33 +295,45 @@ export const ResidentStatusPage: React.FC<Props> = ({ timelineData, battery, app
             <div className="card-icon"><Zap /></div>
             <div>
               <h2 className="card-title">Графік світла</h2>
-              <p className="card-sub">За графіком ДТЕК</p>
+              <p className="card-sub">{scheduleSuspended ? 'ДТЕК: графік не застосовується' : 'За графіком ДТЕК'}</p>
             </div>
           </div>
 
-          <div className="space-y-4">
-            <DaySchedule
-              title="Сьогодні"
-              dateLabel={currentTime.toLocaleDateString('uk-UA', { weekday: 'short', day: 'numeric', month: 'short' })}
-              segments={todaySegments}
-              nowH={nowH}
-            />
-            {tomorrowHasData ? (
-              <DaySchedule
-                title="Завтра"
-                dateLabel={tomorrowDate.toLocaleDateString('uk-UA', { weekday: 'short', day: 'numeric', month: 'short' })}
-                segments={tomorrowSegments}
-              />
-            ) : (
-              <div>
-                <h3 className="text-[15px] font-semibold text-slate-900 mb-2.5">
-                  Завтра <span className="font-normal text-slate-600 capitalize">· {tomorrowDate.toLocaleDateString('uk-UA', { weekday: 'short', day: 'numeric', month: 'short' })}</span>
-                </h3>
-                <div className="alert alert-warn text-[13px]">ДТЕК ще не опублікував графік на завтра</div>
+          {scheduleSuspended ? (
+            <div className="rounded-xl bg-amber-50 ring-1 ring-inset ring-amber-300 p-4">
+              <div className="flex items-center gap-2 text-amber-900 font-semibold text-[15px]">
+                <AlertTriangle className="w-5 h-5 shrink-0 text-amber-600" />
+                Діють екстрені відключення
               </div>
-            )}
-          </div>
-
+              <p className="text-[13px] text-amber-900/90 mt-1.5 leading-relaxed">
+                ДТЕК тимчасово не застосовує графік — світло можуть вимикати й вмикати без попередження.
+                Графік з’явиться тут, щойно ДТЕК його опублікує.
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <DaySchedule
+                title="Сьогодні"
+                dateLabel={currentTime.toLocaleDateString('uk-UA', { weekday: 'short', day: 'numeric', month: 'short' })}
+                segments={todaySegments}
+                nowH={nowH}
+              />
+              {tomorrowHasData ? (
+                <DaySchedule
+                  title="Завтра"
+                  dateLabel={tomorrowDate.toLocaleDateString('uk-UA', { weekday: 'short', day: 'numeric', month: 'short' })}
+                  segments={tomorrowSegments}
+                />
+              ) : (
+                <div>
+                  <h3 className="text-[15px] font-semibold text-slate-900 mb-2.5">
+                    Завтра <span className="font-normal text-slate-600 capitalize">· {tomorrowDate.toLocaleDateString('uk-UA', { weekday: 'short', day: 'numeric', month: 'short' })}</span>
+                  </h3>
+                  <div className="alert alert-warn text-[13px]">ДТЕК ще не опублікував графік на завтра</div>
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Hourly forecast */}
@@ -328,12 +342,21 @@ export const ResidentStatusPage: React.FC<Props> = ({ timelineData, battery, app
             <div className="flex items-center gap-3">
               <div className="card-icon"><Clock /></div>
               <div>
-                <h2 className="card-title">Прогноз по годинах</h2>
+                <h2 className="card-title">{scheduleSuspended ? 'Прогноз: найгірший сценарій' : 'Прогноз по годинах'}</h2>
                 <p className="card-sub">
                   Заряд батареї та робота обладнання {tomorrowHasData ? 'до кінця завтра' : 'до кінця доби'}
                 </p>
               </div>
             </div>
+            {scheduleSuspended && (
+              <div className="mt-3.5 flex gap-2.5 rounded-xl bg-amber-50 ring-1 ring-inset ring-amber-300 px-3.5 py-3 text-[13px] text-amber-900 leading-relaxed">
+                <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5 text-amber-600" />
+                <p>
+                  <b className="font-semibold">Найгірший сценарій:</b> розраховано так, ніби світла не буде весь час.
+                  Якщо світло дадуть, батарея розряджатиметься повільніше і заряджатиметься.
+                </p>
+              </div>
+            )}
             {/* Appliance legend */}
             <div className="flex items-center gap-x-4 gap-y-1.5 mt-3.5 flex-wrap">
               {trackedAppliances.map(a => {

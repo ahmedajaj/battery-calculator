@@ -191,6 +191,10 @@ function App() {
   // ── Merge Yasno data over manual state ──
   const isYasno = yasno.mode === 'yasno' && yasno.groupData !== null;
 
+  // DTEK can suspend the hourly schedule (status e.g. "EmergencyShutdowns"): slots come back
+  // empty. We then forecast the worst case — no grid power at all — and say so in the UI.
+  const scheduleSuspended = isYasno && !!yasno.groupData && yasno.groupData.today.status !== 'ScheduleApplies';
+
   // ── Merge Deye SOC over manual battery charge ──
   const isDeyeLive = deye.mode === 'deye' && deye.soc !== null;
 
@@ -201,6 +205,7 @@ function App() {
 
   const effectivePowerSchedule = useMemo<PowerSchedule>(() => {
     if (!isYasno || !yasno.groupData) return powerSchedule;
+    if (scheduleSuspended) return { periods: [] };
     // When tomorrow has no data, estimate from today's pattern + off-gap
     const tomorrowSlots = yasno.groupData.tomorrow.slots.length > 0
       ? yasno.groupData.tomorrow.slots
@@ -210,7 +215,7 @@ function App() {
       tomorrowSlots,
       Math.floor(currentHour),
     );
-  }, [powerSchedule, isYasno, yasno.groupData, currentHour, offGapHours]);
+  }, [powerSchedule, isYasno, scheduleSuspended, yasno.groupData, currentHour, offGapHours]);
 
   const lockedFields = useMemo<ApiLockedFields>(() => ({
     currentCharge: isDeyeLive,
@@ -221,8 +226,9 @@ function App() {
   const tomorrowHasData = useMemo(() => {
     if (yasno.mode !== 'yasno') return true; // manual mode — user controls everything
     if (!yasno.groupData) return true; // no data yet — don't show uncertain until connected
+    if (scheduleSuspended) return true; // worst case covers tomorrow too (no power)
     return yasno.groupData.tomorrow.slots.length > 0;
-  }, [yasno.mode, yasno.groupData]);
+  }, [yasno.mode, yasno.groupData, scheduleSuspended]);
 
   // Appliance-change handlers (clear active scenario on manual edits)
   const handleAppliancesChange = useCallback((newAppliances: Appliance[]) => {
@@ -324,6 +330,7 @@ function App() {
         tomorrowFullPeriods={tomorrowFullPeriods}
         currentTime={currentTime}
         tomorrowHasData={tomorrowHasData}
+        scheduleSuspended={scheduleSuspended}
         deyeTimestamp={deye.deyeTimestamp}
         batteryPower={deye.batteryPower}
         sharedScenarioName={sharedScenario.shared.scenarioName}
@@ -423,6 +430,7 @@ function App() {
           scheduleError={yasno.error}
           scheduleLastUpdated={yasno.lastUpdated}
           onScheduleRefetch={yasno.refetch}
+          scheduleSuspended={scheduleSuspended}
         />
         
         {/* Section 1: Текущий статус */}

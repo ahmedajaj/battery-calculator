@@ -24,6 +24,8 @@ interface Props {
   scheduleError: string | null;
   scheduleLastUpdated: Date | null;
   onScheduleRefetch: () => void;
+  /** DTEK suspended the hourly schedule (e.g. emergency outages) */
+  scheduleSuspended?: boolean;
 }
 
 /* ── Helpers ── */
@@ -99,6 +101,7 @@ export const DataModePanel: React.FC<Props> = ({
   scheduleError,
   scheduleLastUpdated,
   onScheduleRefetch,
+  scheduleSuspended = false,
 }) => {
   const [expanded, setExpanded] = useState(false);
 
@@ -132,7 +135,8 @@ export const DataModePanel: React.FC<Props> = ({
     if (!isDeye && !isYasno) return 'Усі дані вводяться вручну';
     const parts: string[] = [];
     if (deyeConnected && batterySOC !== null) parts.push(`🔋 ${batterySOC}%`);
-    if (yasnoConnected) parts.push(`Оновлено: ${fmtTime(scheduleLastUpdated)}`);
+    if (yasnoConnected && scheduleSuspended) parts.push('⚠️ ДТЕК: екстрені відключення');
+    else if (yasnoConnected) parts.push(`Оновлено: ${fmtTime(scheduleLastUpdated)}`);
     if (isDeye && batteryError) parts.push('⚠️ Deye');
     if (isYasno && scheduleError) parts.push('⚠️ ДТЕК');
     return parts.join(' · ') || 'Підключення...';
@@ -329,8 +333,15 @@ export const DataModePanel: React.FC<Props> = ({
                   </div>
                 )}
 
+                {scheduleSuspended && (
+                  <div className="alert alert-warn">
+                    <b className="font-semibold">Діють екстрені відключення.</b> ДТЕК не застосовує погодинний графік,
+                    тому прогноз розраховано за найгіршим сценарієм — ніби світла не буде весь час.
+                  </div>
+                )}
+
                 {/* Schedule bars */}
-                {groupData && (
+                {groupData && !scheduleSuspended && (
                   <div className="space-y-3">
                     <ScheduleBar
                       slots={groupData.today.slots}
