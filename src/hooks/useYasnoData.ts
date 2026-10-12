@@ -36,7 +36,7 @@ export function useYasnoData(pollInterval = 60_000): UseYasnoDataReturn {
 
   const [group, setGroupState] = useState<number>(() => {
     const saved = localStorage.getItem(STORAGE_KEY_GROUP);
-    return saved ? parseInt(saved, 10) || 39 : 39;
+    return saved ? parseInt(saved, 10) || 37 : 37;
   });
 
   const [allData, setAllData] = useState<YasnoApiResponse | null>(null);
