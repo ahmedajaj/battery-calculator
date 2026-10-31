@@ -98,7 +98,7 @@ function buildEstimatedTomorrowSlots(
 }
 
 const defaultBatterySettings: BatterySettings = {
-  capacity: 82,
+  capacity: 77,
   minDischarge: 10,
   maxCharge: 95,
   currentCharge: 0,
@@ -111,7 +111,7 @@ const defaultAppliances: Appliance[] = [
     name: 'Water Pump',
     nameUa: 'Насос води',
     icon: 'droplets',
-    power: 2,
+    power: 2.5,
     enabled: true,
     color: '#3b82f6',
     schedule: [],
@@ -131,7 +131,7 @@ const defaultAppliances: Appliance[] = [
     name: 'Elevator',
     nameUa: 'Ліфт',
     icon: 'building',
-    power: 3.0,
+    power: 2.5,
     enabled: true,
     color: '#a855f7',
     schedule: [{ start: 7, end: 9 }, { start: 18.5, end: 20.5 }],
