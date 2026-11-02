@@ -333,6 +333,7 @@ function App() {
         scheduleSuspended={scheduleSuspended}
         deyeTimestamp={deye.deyeTimestamp}
         batteryPower={deye.batteryPower}
+        deyeError={deye.mode === 'deye' ? deye.error : null}
         sharedScenarioName={sharedScenario.shared.scenarioName}
         sharedScenarioTag={sharedScenario.shared.scenarioTag}
         sharedScenarioDescription={sharedScenario.shared.scenarioDescription}

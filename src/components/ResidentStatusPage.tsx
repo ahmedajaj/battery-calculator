@@ -16,6 +16,8 @@ interface Props {
   scheduleSuspended?: boolean;
   deyeTimestamp?: Date | null;
   batteryPower?: number | null;
+  /** Error of the last Deye API request (null when the last request succeeded) */
+  deyeError?: string | null;
   /** Name of the published scenario (from admin) */
   sharedScenarioName?: string | null;
   /** Tag of the published scenario */
@@ -57,6 +59,24 @@ const fmtH = (h: number) => {
   const hh = Math.floor(h);
   const mm = Math.round((h - hh) * 60);
   return `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
+};
+
+/** "5 хв тому", "2 год 10 хв тому", "1 дн 3 год тому" */
+const fmtAgo = (from: Date, now: Date) => {
+  const mins = Math.max(0, Math.floor((now.getTime() - from.getTime()) / 60_000));
+  if (mins < 1) return 'щойно';
+  if (mins < 60) return `${mins} хв тому`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours} год ${mins % 60} хв тому`;
+  return `${Math.floor(hours / 24)} дн ${hours % 24} год тому`;
+};
+
+/** Date + time, with the date omitted when it is today */
+const fmtWhen = (d: Date, now: Date) => {
+  const time = d.toLocaleTimeString('uk-UA', { hour: '2-digit', minute: '2-digit' });
+  return d.toDateString() === now.toDateString()
+    ? `сьогодні о ${time}`
+    : `${d.toLocaleDateString('uk-UA', { day: 'numeric', month: 'long' })} о ${time}`;
 };
 
 /** One continuous stretch of the day with or without grid power (hours, 0–24) */
@@ -120,7 +140,7 @@ const DaySchedule: React.FC<{
   );
 };
 
-export const ResidentStatusPage: React.FC<Props> = ({ timelineData, battery, appliances, todayFullPeriods, tomorrowFullPeriods = [], currentTime, tomorrowHasData = true, scheduleSuspended = false, deyeTimestamp, batteryPower }) => {
+export const ResidentStatusPage: React.FC<Props> = ({ timelineData, battery, appliances, todayFullPeriods, tomorrowFullPeriods = [], currentTime, tomorrowHasData = true, scheduleSuspended = false, deyeTimestamp, batteryPower, deyeError = null }) => {
   const currentHour = currentTime.getHours();
   const levelColor = getChargeColor(battery.currentCharge);
 
@@ -128,7 +148,7 @@ export const ResidentStatusPage: React.FC<Props> = ({ timelineData, battery, app
   const chargeState: 'charging' | 'discharging' | 'idle' | 'unknown' =
     batteryPower == null ? 'unknown'
     : batteryPower < -50 ? 'charging'
-    : batteryPower > 50 ? 'discharging'
+    : batteryPower > 500 ? 'discharging'
     : 'idle';
 
   // Stale data detection (>30 min)
@@ -136,6 +156,9 @@ export const ResidentStatusPage: React.FC<Props> = ({ timelineData, battery, app
   const dataTimeStr = deyeTimestamp
     ? deyeTimestamp.toLocaleTimeString('uk-UA', { hour: '2-digit', minute: '2-digit' })
     : null;
+  // Last request to the Deye API failed — whatever is shown is the last known value
+  const apiDown = deyeError != null;
+  const unreliable = apiDown || isStale;
 
   // Midnight boundary for day delimiter & estimated detection
   const startHour = Math.floor(currentHour);
@@ -186,10 +209,10 @@ export const ResidentStatusPage: React.FC<Props> = ({ timelineData, battery, app
               {currentTime.toLocaleDateString('uk-UA', { weekday: 'long', day: 'numeric', month: 'long' })}
             </span>
             <span className="w-1 h-1 rounded-full bg-slate-300 shrink-0" />
-            {isStale ? (
+            {unreliable ? (
               <span className="inline-flex items-center gap-1 shrink-0 font-semibold text-rose-700">
                 <AlertTriangle className="w-3.5 h-3.5" />
-                Офлайн
+                {apiDown ? 'Немає зв’язку з інвертором' : 'Офлайн'}
               </span>
             ) : (
               <span className="inline-flex items-center gap-1.5 shrink-0 font-semibold text-emerald-800">
@@ -203,13 +226,41 @@ export const ResidentStatusPage: React.FC<Props> = ({ timelineData, battery, app
           </div>
         </header>
 
+        {/* Alarm: battery data is not live */}
+        {unreliable && (
+          <div role="alert" className="mb-3 rounded-3xl bg-rose-50 text-rose-950 p-5 shadow-sm ring-1 ring-inset ring-rose-200 animate-fade-up">
+            <div className="flex items-center gap-3">
+              <span className="grid place-items-center w-10 h-10 shrink-0 rounded-full bg-rose-100 text-rose-600">
+                <AlertTriangle className="w-5 h-5" strokeWidth={2.25} />
+              </span>
+              <div className="min-w-0">
+                <div className="text-lg font-bold tracking-tight leading-tight text-rose-800">Дані неточні</div>
+                <div className="text-[13px] font-medium text-rose-700 leading-snug">Немає даних від інвертора</div>
+              </div>
+            </div>
+
+            <div className="mt-4 flex justify-between gap-3 rounded-2xl bg-white/70 ring-1 ring-inset ring-rose-100 p-3 text-[13px] leading-snug">
+              <span className="text-rose-700">Останні дані інвертора</span>
+              <span className="text-right font-semibold">
+                {deyeTimestamp ? <>{fmtWhen(deyeTimestamp, currentTime)}<br /><span className="font-normal text-rose-700">{fmtAgo(deyeTimestamp, currentTime)}</span></> : 'жодних'}
+              </span>
+            </div>
+
+            <p className="mt-3 text-[13px] leading-relaxed text-rose-900/90">
+              {deyeTimestamp
+                ? 'Заряд нижче — останнє відоме значення з інвертора, а не поточний стан. Реальний заряд може суттєво відрізнятися, прогноз теж неточний.'
+                : 'Заряд батареї невідомий. Прогноз нижче не враховує реальний стан батареї.'}
+            </p>
+          </div>
+        )}
+
         {/* Big battery indicator */}
         <div className="relative overflow-hidden bg-white rounded-3xl border border-slate-200 p-5 sm:p-6 mb-3 shadow-md animate-fade-up">
           <div
             className="pointer-events-none absolute -top-24 -right-24 w-64 h-64 rounded-full blur-3xl opacity-25"
             style={{ backgroundColor: awaitingData ? 'transparent' : levelColor }}
           />
-          <div className="relative flex items-center gap-5 sm:gap-6">
+          <div className={`relative flex items-center gap-5 sm:gap-6 ${unreliable ? 'opacity-50 grayscale' : ''}`}>
             {/* Ring gauge */}
             <div className="relative shrink-0 w-32 h-32 sm:w-40 sm:h-40">
               <svg viewBox="0 0 120 120" className="w-full h-full -rotate-90">
@@ -251,7 +302,10 @@ export const ResidentStatusPage: React.FC<Props> = ({ timelineData, battery, app
             </div>
 
             <div className="min-w-0 flex-1">
-              <div className="text-[13px] font-medium text-slate-600">{awaitingData ? 'Завантаження даних…' : 'Заряд батареї'}</div>
+              <div className={`text-[13px] font-medium ${unreliable ? 'text-rose-700' : 'text-slate-600'}`}>
+                {awaitingData ? (apiDown ? 'Немає даних' : 'Завантаження даних…')
+                  : unreliable && deyeTimestamp ? `Заряд ${fmtWhen(deyeTimestamp, currentTime)} (застарілі)` : 'Заряд батареї'}
+              </div>
               {chargeState !== 'unknown' && (
                 <div className={`flex items-center gap-1.5 mt-1 text-base sm:text-lg font-semibold leading-tight ${
                   chargeState === 'charging' ? 'text-emerald-700'
@@ -280,13 +334,6 @@ export const ResidentStatusPage: React.FC<Props> = ({ timelineData, battery, app
             </div>
           </div>
 
-          {/* Stale data warning */}
-          {isStale && (
-            <div className="relative mt-4 flex items-center gap-2 bg-rose-50 text-rose-600 text-xs font-medium px-3 py-2 rounded-xl ring-1 ring-inset ring-rose-200">
-              <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />
-              <span>Інвертор не оновлювався понад 30 хв — дані можуть бути неактуальні</span>
-            </div>
-          )}
         </div>
 
         {/* Power schedule */}
