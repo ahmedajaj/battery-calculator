@@ -9,6 +9,11 @@ const LATEST_URL = `${import.meta.env.BASE_URL}api/deye/latest`;
 const SPIKE_W = 1500;
 /** Base load = lowest consumption over this window (rides are short, so most samples miss them) */
 const BASELINE_WINDOW_MS = 30 * 60_000;
+/**
+ * Below this the building runs straight from the grid: the inverter doesn't see the load
+ * (it reads 0–200 W), so elevator rides can't be detected.
+ */
+export const GRID_ON_BELOW_W = 500;
 /** Live readings closer than this to a history sample are the same snapshot */
 const SAME_SAMPLE_S = 90;
 
@@ -17,6 +22,8 @@ export interface UseElevatorActivityReturn {
   lastMovement: Date | null;
   /** Time of the latest history sample */
   lastSample: Date | null;
+  /** Building load in the latest sample (W) — under GRID_ON_BELOW_W means it's on the grid */
+  lastConsumption: number | null;
   error: string | null;
 }
 
@@ -41,10 +48,13 @@ async function fetchDay(stationId: number, day: Date): Promise<HistoryItem[]> {
   return (json?.stationDataItems ?? []) as HistoryItem[];
 }
 
-/** Latest sample whose consumption jumps SPIKE_W above the lowest value of the preceding window */
+/**
+ * Latest sample whose consumption jumps SPIKE_W above the lowest value of the preceding window.
+ * Only on-battery samples count, so the step from grid (~0 W) to battery load isn't a "ride".
+ */
 export function findLastMovement(items: HistoryItem[]): Date | null {
   const samples = items
-    .filter(i => typeof i.consumptionPower === 'number')
+    .filter(i => typeof i.consumptionPower === 'number' && i.consumptionPower >= GRID_ON_BELOW_W)
     .sort((a, b) => a.timeStamp - b.timeStamp);
   for (let k = samples.length - 1; k >= 0; k--) {
     const t = samples[k].timeStamp * 1000;
@@ -61,6 +71,7 @@ export function useElevatorActivity(pollInterval = 60_000): UseElevatorActivityR
   const stationId = parseInt((import.meta.env.VITE_DEYE_STATION_ID as string) || '61180551', 10);
   const [lastMovement, setLastMovement] = useState<Date | null>(null);
   const [lastSample, setLastSample] = useState<Date | null>(null);
+  const [lastConsumption, setLastConsumption] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   // Live readings collected across polls, keyed by their timestamp (seconds)
   const liveSamples = useRef(new Map<number, number>());
@@ -101,9 +112,10 @@ export function useElevatorActivity(pollInterval = 60_000): UseElevatorActivityR
           items.push({ timeStamp: ts, consumptionPower: power });
         }
       }
-      const latest = items.reduce((m, i) => Math.max(m, i.timeStamp), 0);
+      const latest = items.reduce<HistoryItem | null>((m, i) => (!m || i.timeStamp > m.timeStamp ? i : m), null);
       setLastMovement(findLastMovement(items));
-      setLastSample(latest ? new Date(latest * 1000) : null);
+      setLastSample(latest ? new Date(latest.timeStamp * 1000) : null);
+      setLastConsumption(latest?.consumptionPower ?? null);
       setError(null);
     } catch (e: unknown) {
       setError((e as Error).message || "Помилка з'єднання");
@@ -117,5 +129,5 @@ export function useElevatorActivity(pollInterval = 60_000): UseElevatorActivityR
     return () => clearInterval(id);
   }, [fetchData, pollInterval]);
 
-  return { lastMovement, lastSample, error };
+  return { lastMovement, lastSample, lastConsumption, error };
 }
