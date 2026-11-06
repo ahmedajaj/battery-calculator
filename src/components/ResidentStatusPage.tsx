@@ -2,6 +2,7 @@ import React from 'react';
 import { Droplets, Flame, Building2, Lightbulb, Zap, ZapOff, ArrowUp, ArrowDown, AlertTriangle, Minus, Clock, Gauge, Plug, ChevronRight } from 'lucide-react';
 import type { TimelinePoint, BatterySettings, Appliance, PowerSchedule } from '../types';
 import { getChargeColor } from '../utils/calculations';
+import { useElevatorActivity } from '../hooks/useElevatorActivity';
 
 interface Props {
   timelineData: TimelinePoint[];
@@ -156,6 +157,13 @@ export const ResidentStatusPage: React.FC<Props> = ({ timelineData, battery, app
   const dataTimeStr = deyeTimestamp
     ? deyeTimestamp.toLocaleTimeString('uk-UA', { hour: '2-digit', minute: '2-digit' })
     : null;
+  // Elevator: last power spike in the Deye data. Snapshots are 5 min apart, so we only say
+  // when it last moved — "no spike" can't tell idle from a ride between snapshots.
+  const elevator = useElevatorActivity(60_000);
+  const elevatorNoData = elevator.error != null || elevator.lastSample == null;
+  const elevatorRecent = elevator.lastMovement != null
+    && currentTime.getTime() - elevator.lastMovement.getTime() <= 10 * 60_000;
+
   // Last request to the Deye API failed — whatever is shown is the last known value
   const apiDown = deyeError != null;
   const unreliable = apiDown || isStale;
@@ -334,6 +342,32 @@ export const ResidentStatusPage: React.FC<Props> = ({ timelineData, battery, app
             </div>
           </div>
 
+        </div>
+
+        {/* Elevator: time of the last detected movement */}
+        <div className="flex items-center gap-3 bg-white rounded-2xl border border-slate-200 px-4 py-3.5 sm:px-5 mb-3 shadow-sm animate-fade-up">
+          <span className={`grid place-items-center w-10 h-10 rounded-xl shrink-0 ${
+            elevatorRecent ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'
+          }`}>
+            <Building2 className="w-5 h-5" />
+          </span>
+          <div className="min-w-0 flex-1 leading-tight">
+            <div className="text-xs text-slate-600">Останній рух ліфта</div>
+            {elevator.lastMovement ? (
+              <div className="flex items-baseline gap-2 mt-0.5">
+                <span className="text-[15px] font-semibold text-slate-900 font-mono">
+                  {elevator.lastMovement.toLocaleTimeString('uk-UA', { hour: '2-digit', minute: '2-digit' })}
+                </span>
+                <span className={`text-xs ${elevatorRecent ? 'text-emerald-700 font-medium' : 'text-slate-600'}`}>
+                  {fmtAgo(elevator.lastMovement, currentTime)}
+                </span>
+              </div>
+            ) : (
+              <div className="text-[15px] font-semibold text-slate-700 mt-0.5">
+                {elevatorNoData ? 'Немає даних' : 'Сьогодні не помічено'}
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Power schedule */}
