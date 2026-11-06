@@ -13,7 +13,7 @@ import {
 } from './components';
 import type { BatterySettings, Appliance, PowerSchedule, ApiLockedFields, TimeRange, YasnoSlot } from './types';
 import { calculateBatteryStatus, generateExtendedTimeline } from './utils/calculations';
-import { generateScenarios, type Scenario } from './utils/scenarios';
+import { generateScenarios, CUSTOM_SCENARIO_ID, type Scenario } from './utils/scenarios';
 import { useYasnoData } from './hooks/useYasnoData';
 import { useDeyeData } from './hooks/useDeyeData';
 import { useSharedScenario, type SaveResult } from './hooks/useSharedScenario';
@@ -230,10 +230,10 @@ function App() {
     return yasno.groupData.tomorrow.slots.length > 0;
   }, [yasno.mode, yasno.groupData, scheduleSuspended]);
 
-  // Appliance-change handlers (clear active scenario on manual edits)
+  // Appliance-change handlers (manual edits turn into the admin's own regime)
   const handleAppliancesChange = useCallback((newAppliances: Appliance[]) => {
     setAppliances(newAppliances);
-    setActiveScenarioId(null);
+    setActiveScenarioId(CUSTOM_SCENARIO_ID);
     setTouched(true);
   }, []);
 
@@ -252,6 +252,7 @@ function App() {
       scenarioTag: scenario.tag,
       scenarioDescription: scenario.description,
       updatedAt: new Date().toISOString(),
+      appliances: scenario.appliances,
     });
   }, [handleApplyScenario, sharedScenario]);
 
@@ -288,15 +289,18 @@ function App() {
   }, [isYasno, yasno.groupData]);
 
   // ── Route: /status — simplified resident view ──
-  // Apply shared scenario's appliances if available
+  // Apply the shared scenario's appliances. Presets are regenerated so they keep adapting to
+  // the current outage schedule; a custom regime (or an unknown id) uses the saved schedules.
+  const { scenarioId: sharedId, appliances: sharedAppliances } = sharedScenario.shared;
   const statusAppliances = useMemo(() => {
-    if (!sharedScenario.shared.scenarioId) return appliances;
-    const matched = allScenarios.find(s => s.id === sharedScenario.shared.scenarioId);
-    return matched ? matched.appliances : appliances;
-  }, [sharedScenario.shared.scenarioId, allScenarios, appliances]);
+    if (!sharedId) return appliances;
+    const matched = sharedId !== CUSTOM_SCENARIO_ID && allScenarios.find(s => s.id === sharedId);
+    if (matched) return matched.appliances;
+    return sharedAppliances?.length ? sharedAppliances : appliances;
+  }, [sharedId, sharedAppliances, allScenarios, appliances]);
 
   // Main calculator: follow the published scenario until the admin changes something
-  const publishedMatched = allScenarios.some(sc => sc.id === sharedScenario.shared.scenarioId);
+  const publishedMatched = !!sharedId && (!!sharedAppliances?.length || allScenarios.some(sc => sc.id === sharedId));
   const mainAppliances = touched ? appliances : statusAppliances;
   const mainActiveScenarioId = touched ? activeScenarioId : (publishedMatched ? sharedScenario.shared.scenarioId : null);
 
@@ -474,6 +478,7 @@ function App() {
         <ScenarioPanel
           battery={effectiveBatterySettings}
           appliances={appliances}
+          currentAppliances={mainAppliances}
           powerSchedule={effectivePowerSchedule}
           currentHour={currentHour}
           tomorrowHasData={tomorrowHasData}

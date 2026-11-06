@@ -1,12 +1,14 @@
 import React, { useMemo, useRef, useState } from 'react';
-import { Sparkles, Check, X, Battery, Clock, Zap, ZapOff, AlertTriangle, Share2, Sofa, Scale, Building2, ThermometerSnowflake, Droplets, Moon, BatteryLow, Flame, TriangleAlert, Lightbulb, type LucideIcon } from 'lucide-react';
+import { Sparkles, Check, X, Battery, Clock, Zap, ZapOff, AlertTriangle, Share2, Sofa, Scale, Building2, ThermometerSnowflake, Droplets, Moon, BatteryLow, Flame, TriangleAlert, Lightbulb, SlidersHorizontal, type LucideIcon } from 'lucide-react';
 import type { BatterySettings, Appliance, PowerSchedule } from '../types';
-import { generateScenarios, analyzeSituation, type Scenario } from '../utils/scenarios';
+import { generateScenarios, analyzeSituation, buildCustomScenario, CUSTOM_SCENARIO_ID, type Scenario } from '../utils/scenarios';
 import type { SaveResult } from '../hooks/useSharedScenario';
 
 interface Props {
   battery: BatterySettings;
   appliances: Appliance[];
+  /** Appliances as currently set in the calculator — shown as «Власний режим» after manual edits */
+  currentAppliances: Appliance[];
   powerSchedule: PowerSchedule;
   currentHour: number;
   tomorrowHasData: boolean;
@@ -33,6 +35,7 @@ const TAG_STYLES: Record<Scenario['tag'], { bg: string; text: string; tile: stri
   balanced:  { bg: 'bg-sky-50',     text: 'text-sky-800',     tile: 'bg-sky-100 text-sky-700',         label: 'Баланс' },
   economy:   { bg: 'bg-amber-50',   text: 'text-amber-800',   tile: 'bg-amber-100 text-amber-700',     label: 'Економія' },
   emergency: { bg: 'bg-rose-50',    text: 'text-rose-800',    tile: 'bg-rose-100 text-rose-700',       label: 'Аварійний' },
+  custom:    { bg: 'bg-violet-50',  text: 'text-violet-800',  tile: 'bg-violet-100 text-violet-700',   label: 'Власний' },
 };
 
 const TAG_ORDER: Scenario['tag'][] = ['comfort', 'balanced', 'economy', 'emergency'];
@@ -49,6 +52,7 @@ const SCENARIO_ICONS: Record<string, LucideIcon> = {
   'battery-low': BatteryLow,
   flame: Flame,
   alert: TriangleAlert,
+  sliders: SlidersHorizontal,
 };
 
 const APPLIANCE_ICONS: Record<string, LucideIcon> = {
@@ -70,6 +74,7 @@ const scheduleText = (a: Appliance) => {
 export const ScenarioPanel: React.FC<Props> = ({
   battery,
   appliances,
+  currentAppliances,
   powerSchedule,
   currentHour,
   tomorrowHasData,
@@ -98,6 +103,13 @@ export const ScenarioPanel: React.FC<Props> = ({
     [battery, powerSchedule, currentHour],
   );
 
+  // The admin's hand-edited regime, shown only while it is the selected one
+  const isCustomActive = activeScenarioId === CUSTOM_SCENARIO_ID;
+  const customScenario = useMemo(
+    () => (isCustomActive ? buildCustomScenario(battery, currentAppliances, powerSchedule, currentHour) : null),
+    [isCustomActive, battery, currentAppliances, powerSchedule, currentHour],
+  );
+
   const feasibleCount = scenarios.filter(s => s.feasible).length;
 
   const showNotice = (n: { ok: boolean; title: string; detail: string }) => {
@@ -108,7 +120,7 @@ export const ScenarioPanel: React.FC<Props> = ({
 
   const handlePublish = async () => {
     if (!onPublish) return;
-    const scenario = scenarios.find(s => s.id === activeScenarioId);
+    const scenario = customScenario ?? scenarios.find(s => s.id === activeScenarioId);
     if (!scenario) {
       showNotice({ ok: false, title: 'Сценарій не вибрано', detail: 'Натисніть на картку сценарію вище, а потім «Опублікувати».' });
       return;
@@ -139,6 +151,82 @@ export const ScenarioPanel: React.FC<Props> = ({
     }
     return map;
   }, [scenarios]);
+
+  const renderCard = (scenario: Scenario) => {
+    const isActive = activeScenarioId === scenario.id;
+    const isPublished = publishedScenarioId === scenario.id;
+    const Icon = SCENARIO_ICONS[scenario.icon] ?? Sparkles;
+
+    return (
+      <button
+        key={scenario.id}
+        onClick={() => onApply(scenario.id, scenario.appliances)}
+        aria-pressed={isActive}
+        title={scenario.description}
+        className={`text-left p-4 rounded-xl flex flex-col transition-all duration-200 cursor-pointer ${
+          isActive
+            ? 'bg-white ring-2 ring-slate-900 shadow-md'
+            : isPublished
+            ? 'bg-white ring-2 ring-emerald-500 hover:shadow-md'
+            : 'bg-white ring-1 ring-slate-200 hover:ring-slate-400 hover:shadow-md'
+        }`}
+      >
+        {/* Header: icon + name + badges */}
+        <div className="flex items-center gap-2.5 mb-3">
+          <span className={`grid place-items-center w-8 h-8 rounded-lg shrink-0 ${TAG_STYLES[scenario.tag].tile}`}>
+            <Icon className="w-4 h-4" />
+          </span>
+          <span className="flex-1 min-w-0 font-semibold text-[15px] text-slate-900 leading-tight">
+            {scenario.name}
+          </span>
+          {isActive && (
+            <span className="chip bg-slate-900 text-white ring-slate-900 shrink-0">Обрано</span>
+          )}
+          {isPublished && !isActive && (
+            <span className="chip chip-live shrink-0">Опубліковано</span>
+          )}
+        </div>
+
+        {/* What runs when */}
+        <ul className="divide-y divide-slate-100 mb-3.5">
+          {scenario.appliances.map(a => {
+            const AIcon = APPLIANCE_ICONS[a.id];
+            const mode = !a.enabled ? 'off' : a.schedule.length === 0 ? 'always' : 'partial';
+            return (
+              <li key={a.id} className="flex items-center gap-2 py-1.5 text-[13px]">
+                {AIcon && <AIcon className={`w-4 h-4 shrink-0 ${mode === 'off' ? 'text-slate-400' : 'text-slate-700'}`} />}
+                <span className={`font-medium ${mode === 'off' ? 'text-slate-500' : 'text-slate-800'}`}>{a.nameUa}</span>
+                <span className="sr-only">: </span>
+                <span className={`ml-auto shrink-0 rounded-md px-2 py-0.5 text-xs font-semibold tabular-nums ${
+                  mode === 'always' ? 'bg-emerald-100 text-emerald-800'
+                  : mode === 'partial' ? 'bg-sky-100 text-sky-800'
+                  : 'bg-slate-100 text-slate-500'
+                }`}>
+                  {scheduleText(a)}
+                </span>
+              </li>
+            );
+          })}
+        </ul>
+
+        {/* Outcome */}
+        <div className={`mt-auto flex items-center justify-between gap-2 rounded-lg px-2.5 py-1.5 text-xs font-semibold ${
+          scenario.feasible ? 'bg-emerald-50 text-emerald-800' : 'bg-rose-50 text-rose-800'
+        }`}>
+          <span className="flex items-center gap-1">
+            {scenario.feasible
+              ? <><Check className="w-3.5 h-3.5" strokeWidth={2.75} /> Вистачить</>
+              : <><X className="w-3.5 h-3.5" strokeWidth={2.75} /> Не вистачить</>}
+          </span>
+          <span className="font-medium">
+            {scenario.feasible
+              ? <>мін. заряд <span className="font-mono font-semibold">{Math.round(scenario.minBatteryLevel)}%</span></>
+              : <>сяде о <span className="font-mono font-semibold">{scenario.minBatteryTime}:00</span></>}
+          </span>
+        </div>
+      </button>
+    );
+  };
 
   return (
     <div className="card">
@@ -229,6 +317,24 @@ export const ScenarioPanel: React.FC<Props> = ({
         </div>
       )}
 
+      {/* Hand-edited regime from sections 03/04 */}
+      {customScenario && (
+        <div className="mb-4">
+          <div className="flex items-center gap-2 mb-2.5 px-1">
+            <span className={`text-xs font-semibold uppercase tracking-wider ${TAG_STYLES.custom.text}`}>
+              {TAG_STYLES.custom.label}
+            </span>
+            <div className="flex-1 h-px bg-slate-200" />
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {renderCard(customScenario)}
+          </div>
+          <p className="text-xs text-slate-600 mt-2 px-1">
+            Ваші зміни в «Керування приладами» та «Розклад роботи приладів». Їх можна опублікувати так само, як сценарій.
+          </p>
+        </div>
+      )}
+
       {/* Scenario cards grouped by tag */}
       {TAG_ORDER.map(tagKey => {
         const group = grouped[tagKey];
@@ -246,81 +352,7 @@ export const ScenarioPanel: React.FC<Props> = ({
             </div>
 
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              {group.map(scenario => {
-                const isActive = activeScenarioId === scenario.id;
-                const isPublished = publishedScenarioId === scenario.id;
-                const Icon = SCENARIO_ICONS[scenario.icon] ?? Sparkles;
-
-                return (
-                  <button
-                    key={scenario.id}
-                    onClick={() => onApply(scenario.id, scenario.appliances)}
-                    aria-pressed={isActive}
-                    title={scenario.description}
-                    className={`text-left p-4 rounded-xl flex flex-col transition-all duration-200 cursor-pointer ${
-                      isActive
-                        ? 'bg-white ring-2 ring-slate-900 shadow-md'
-                        : isPublished
-                        ? 'bg-white ring-2 ring-emerald-500 hover:shadow-md'
-                        : 'bg-white ring-1 ring-slate-200 hover:ring-slate-400 hover:shadow-md'
-                    }`}
-                  >
-                    {/* Header: icon + name + badges */}
-                    <div className="flex items-center gap-2.5 mb-3">
-                      <span className={`grid place-items-center w-8 h-8 rounded-lg shrink-0 ${tagMeta.tile}`}>
-                        <Icon className="w-4 h-4" />
-                      </span>
-                      <span className="flex-1 min-w-0 font-semibold text-[15px] text-slate-900 leading-tight">
-                        {scenario.name}
-                      </span>
-                      {isActive && (
-                        <span className="chip bg-slate-900 text-white ring-slate-900 shrink-0">Обрано</span>
-                      )}
-                      {isPublished && !isActive && (
-                        <span className="chip chip-live shrink-0">Опубліковано</span>
-                      )}
-                    </div>
-
-                    {/* What runs when */}
-                    <ul className="divide-y divide-slate-100 mb-3.5">
-                      {scenario.appliances.map(a => {
-                        const AIcon = APPLIANCE_ICONS[a.id];
-                        const mode = !a.enabled ? 'off' : a.schedule.length === 0 ? 'always' : 'partial';
-                        return (
-                          <li key={a.id} className="flex items-center gap-2 py-1.5 text-[13px]">
-                            {AIcon && <AIcon className={`w-4 h-4 shrink-0 ${mode === 'off' ? 'text-slate-400' : 'text-slate-700'}`} />}
-                            <span className={`font-medium ${mode === 'off' ? 'text-slate-500' : 'text-slate-800'}`}>{a.nameUa}</span>
-                            <span className="sr-only">: </span>
-                            <span className={`ml-auto shrink-0 rounded-md px-2 py-0.5 text-xs font-semibold tabular-nums ${
-                              mode === 'always' ? 'bg-emerald-100 text-emerald-800'
-                              : mode === 'partial' ? 'bg-sky-100 text-sky-800'
-                              : 'bg-slate-100 text-slate-500'
-                            }`}>
-                              {scheduleText(a)}
-                            </span>
-                          </li>
-                        );
-                      })}
-                    </ul>
-
-                    {/* Outcome */}
-                    <div className={`mt-auto flex items-center justify-between gap-2 rounded-lg px-2.5 py-1.5 text-xs font-semibold ${
-                      scenario.feasible ? 'bg-emerald-50 text-emerald-800' : 'bg-rose-50 text-rose-800'
-                    }`}>
-                      <span className="flex items-center gap-1">
-                        {scenario.feasible
-                          ? <><Check className="w-3.5 h-3.5" strokeWidth={2.75} /> Вистачить</>
-                          : <><X className="w-3.5 h-3.5" strokeWidth={2.75} /> Не вистачить</>}
-                      </span>
-                      <span className="font-medium">
-                        {scenario.feasible
-                          ? <>мін. заряд <span className="font-mono font-semibold">{Math.round(scenario.minBatteryLevel)}%</span></>
-                          : <>сяде о <span className="font-mono font-semibold">{scenario.minBatteryTime}:00</span></>}
-                      </span>
-                    </div>
-                  </button>
-                );
-              })}
+              {group.map(renderCard)}
             </div>
           </div>
         );

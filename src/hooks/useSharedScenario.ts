@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import type { Appliance } from '../types';
 
 const SCENARIO_URL = `${import.meta.env.BASE_URL}data/scenario.json`;
 const STORAGE_KEY_PIN = 'battery-calc-pin';
@@ -18,6 +19,8 @@ export interface SharedScenario {
   scenarioTag: string | null;
   scenarioDescription: string | null;
   updatedAt: string | null;
+  /** Appliance schedules exactly as published (absent in files saved by older versions) */
+  appliances?: Appliance[] | null;
 }
 
 /** Outcome of a publish attempt, so the UI can tell the admin what happened */

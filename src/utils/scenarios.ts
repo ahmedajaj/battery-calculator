@@ -9,7 +9,7 @@ export interface Scenario {
   description: string;
   /** Icon key, mapped to a line icon in the UI */
   icon: string;
-  tag: 'comfort' | 'balanced' | 'economy' | 'emergency';
+  tag: 'comfort' | 'balanced' | 'economy' | 'emergency' | 'custom';
   appliances: Appliance[];
   feasible: boolean;
   minBatteryLevel: number;
@@ -81,6 +81,36 @@ function simulate(
 }
 
 // ─── Public API ───
+
+/** Id of the admin's hand-made regime (edited in «Керування приладами» / «Розклад») */
+export const CUSTOM_SCENARIO_ID = 'custom';
+
+const fmtHour = (h: number) => (h % 1 ? `${Math.floor(h)}:30` : `${h}`);
+
+/** Wrap hand-edited appliances as a scenario so it can be shown and published like a preset */
+export function buildCustomScenario(
+  battery: BatterySettings,
+  appliances: Appliance[],
+  powerSchedule: PowerSchedule,
+  currentHour: number,
+): Scenario {
+  const sim = simulate(battery, appliances, powerSchedule, currentHour);
+  const description = appliances
+    .map(a => `${a.nameUa}: ${!a.enabled ? 'вимкнено' : a.schedule.length === 0 ? 'цілодобово' : a.schedule.map(r => `${fmtHour(r.start)}–${fmtHour(r.end)}`).join(', ')}`)
+    .join('; ');
+  return {
+    id: CUSTOM_SCENARIO_ID,
+    name: 'Власний режим',
+    description,
+    icon: 'sliders',
+    tag: 'custom',
+    appliances: appliances.map(a => ({ ...a, schedule: [...a.schedule] })),
+    feasible: sim.feasible,
+    minBatteryLevel: sim.minLevel,
+    minBatteryTime: sim.minTime,
+    energyUsedKwh: sim.energyUsed,
+  };
+}
 
 export function analyzeSituation(
   battery: BatterySettings,
