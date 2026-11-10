@@ -20,7 +20,7 @@ const SAME_SAMPLE_S = 90;
 export interface UseElevatorActivityReturn {
   /** Time of the latest sample with an elevator-sized spike (null if none seen today) */
   lastMovement: Date | null;
-  /** Time of the latest history sample */
+  /** Time of the latest complete reading (one that has power data) */
   lastSample: Date | null;
   /** Building load in the latest sample (W) — under GRID_ON_BELOW_W means it's on the grid */
   lastConsumption: number | null;
@@ -87,8 +87,9 @@ export function useElevatorActivity(pollInterval = 60_000): UseElevatorActivityR
       if (!res.ok) return;
       const json = await res.json();
       const ts = Number(json?.data?.lastUpdateTime ?? json?.lastUpdateTime);
-      const power = Number(json?.data?.consumptionPower ?? json?.consumptionPower);
-      if (ts && !isNaN(power)) liveSamples.current.set(ts, power);
+      // The inverter sometimes reports only SOC with every power field null — not a reading
+      const power = json?.data?.consumptionPower ?? json?.consumptionPower;
+      if (ts && typeof power === 'number') liveSamples.current.set(ts, power);
     } catch {
       // Live readings are a bonus — history alone still works
     }
@@ -112,7 +113,10 @@ export function useElevatorActivity(pollInterval = 60_000): UseElevatorActivityR
           items.push({ timeStamp: ts, consumptionPower: power });
         }
       }
-      const latest = items.reduce<HistoryItem | null>((m, i) => (!m || i.timeStamp > m.timeStamp ? i : m), null);
+      // Latest complete reading (history also has SOC-only rows with null power)
+      const latest = items
+        .filter(i => typeof i.consumptionPower === 'number')
+        .reduce<HistoryItem | null>((m, i) => (!m || i.timeStamp > m.timeStamp ? i : m), null);
       setLastMovement(findLastMovement(items));
       setLastSample(latest ? new Date(latest.timeStamp * 1000) : null);
       setLastConsumption(latest?.consumptionPower ?? null);

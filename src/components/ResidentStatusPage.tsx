@@ -152,15 +152,22 @@ export const ResidentStatusPage: React.FC<Props> = ({ timelineData, battery, app
     : batteryPower > 500 ? 'discharging'
     : 'idle';
 
-  // Stale data detection (>30 min)
-  const isStale = deyeTimestamp != null && (currentTime.getTime() - deyeTimestamp.getTime()) > 30 * 60 * 1000;
-  const dataTimeStr = deyeTimestamp
-    ? deyeTimestamp.toLocaleTimeString('uk-UA', { hour: '2-digit', minute: '2-digit' })
-    : null;
   // Elevator: last power spike in the Deye data. Snapshots are 5 min apart, so we only say
   // when it last moved — "no spike" can't tell idle from a ride between snapshots.
   const elevator = useElevatorActivity(60_000);
-  const elevatorNoData = elevator.error != null || elevator.lastSample == null;
+  // The inverter can keep sending SOC-only readings (power fields null) for hours, so the
+  // data is as old as the last complete reading, not the last /latest timestamp
+  const dataTime = deyeTimestamp && elevator.lastSample && elevator.lastSample < deyeTimestamp
+    ? elevator.lastSample
+    : deyeTimestamp;
+
+  // Stale data detection (>30 min)
+  const isStale = dataTime != null && (currentTime.getTime() - dataTime.getTime()) > 30 * 60 * 1000;
+  const dataTimeStr = dataTime
+    ? dataTime.toLocaleTimeString('uk-UA', { hour: '2-digit', minute: '2-digit' })
+    : null;
+  const elevatorNoData = elevator.error != null || elevator.lastSample == null
+    || currentTime.getTime() - elevator.lastSample.getTime() > 20 * 60_000;
   // On grid power the inverter doesn't see the building's load, so rides are invisible
   const elevatorOnGrid = !elevatorNoData && elevator.lastConsumption != null && elevator.lastConsumption < GRID_ON_BELOW_W;
   // Green: moved within 30 min, red: over an hour ago, grey otherwise (and on grid / no data)
@@ -259,12 +266,12 @@ export const ResidentStatusPage: React.FC<Props> = ({ timelineData, battery, app
             <div className="mt-4 flex justify-between gap-3 rounded-2xl bg-white/70 ring-1 ring-inset ring-rose-100 p-3 text-[13px] leading-snug">
               <span className="text-rose-700">Останні дані інвертора</span>
               <span className="text-right font-semibold">
-                {deyeTimestamp ? <>{fmtWhen(deyeTimestamp, currentTime)}<br /><span className="font-normal text-rose-700">{fmtAgo(deyeTimestamp, currentTime)}</span></> : 'жодних'}
+                {dataTime ? <>{fmtWhen(dataTime, currentTime)}<br /><span className="font-normal text-rose-700">{fmtAgo(dataTime, currentTime)}</span></> : 'жодних'}
               </span>
             </div>
 
             <p className="mt-3 text-[13px] leading-relaxed text-rose-900/90">
-              {deyeTimestamp
+              {dataTime
                 ? 'Заряд нижче — останнє відоме значення з інвертора, а не поточний стан. Реальний заряд може суттєво відрізнятися, прогноз теж неточний.'
                 : 'Заряд батареї невідомий. Прогноз нижче не враховує реальний стан батареї.'}
             </p>
@@ -321,7 +328,7 @@ export const ResidentStatusPage: React.FC<Props> = ({ timelineData, battery, app
             <div className="min-w-0 flex-1">
               <div className={`text-[13px] font-medium ${unreliable ? 'text-rose-700' : 'text-slate-600'}`}>
                 {awaitingData ? (apiDown ? 'Немає даних' : 'Завантаження даних…')
-                  : unreliable && deyeTimestamp ? `Заряд ${fmtWhen(deyeTimestamp, currentTime)} (застарілі)` : 'Заряд батареї'}
+                  : unreliable && dataTime ? `Заряд ${fmtWhen(dataTime, currentTime)} (застарілі)` : 'Заряд батареї'}
               </div>
               {chargeState !== 'unknown' && (
                 <div className={`flex items-center gap-1.5 mt-1 text-base sm:text-lg font-semibold leading-tight ${
@@ -369,6 +376,8 @@ export const ResidentStatusPage: React.FC<Props> = ({ timelineData, battery, app
                 <div className="text-[15px] font-semibold text-slate-900 mt-0.5">Світло є</div>
                 <div className="text-xs text-slate-600 mt-0.5">Ліфт працює від мережі, рух не відстежується</div>
               </>
+            ) : elevatorNoData ? (
+              <div className="text-[15px] font-semibold text-slate-700 mt-0.5">Немає даних</div>
             ) : elevator.lastMovement ? (
               <div className="flex items-baseline gap-2 mt-0.5">
                 <span className="text-[15px] font-semibold text-slate-900 font-mono">
@@ -384,7 +393,7 @@ export const ResidentStatusPage: React.FC<Props> = ({ timelineData, battery, app
               </div>
             ) : (
               <div className="text-[15px] font-semibold text-slate-700 mt-0.5">
-                {elevatorNoData ? 'Немає даних' : 'Сьогодні не помічено'}
+                Сьогодні не помічено
               </div>
             )}
           </div>
